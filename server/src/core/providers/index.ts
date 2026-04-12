@@ -56,6 +56,44 @@ export async function initAllProviders() {
  * 独立运行模式 (Providers 聚合服务)
  * 仅对外暴露统一的 /llm 接口，屏蔽底层 provider 细节
  */
+/**
+ * 满足 RubickModule 规范的默认导出
+ */
+export default {
+  name: 'llm',
+  async joinHTTP(router: any) {
+    // 路由注册：将 /llm/chat 等路由挂载到全局 /api/llm 下
+    // 这里的 router 假设是主 server 传递的一个带路由注册能力的实例
+    // 模块内部可以根据需求定义更细致的子路径
+    
+    // 初始化 Provider
+    await initAllProviders();
+    
+    // 注意：这里仅定义逻辑，具体的 router 类型取决于 server 的 HTTP 框架 (如 Elysia, Hono 等)
+    // 假设 router 提供一个 handle 方法来注册具体的路径逻辑
+    router.handle('/llm/chat', async (req: Request) => {
+      const body = await req.json();
+      const { messages, options = {} } = body;
+      return await llmChat(messages || [], options);
+    });
+
+    router.handle('/llm/generate', async (req: Request) => {
+      const body = await req.json();
+      const { prompt, options = {} } = body;
+      return await llmGenerate(prompt || '', options);
+    });
+  },
+
+  async joinMCP(mcpServer: any) {
+    // MCP 注册逻辑：将 LLM 能力暴露给 MCP 协议
+    // mcpServer.addTool({ name: 'chat', description: '...', ... });
+    console.log('[LLMProvider] Joining MCP...');
+  }
+};
+
+/**
+ * 独立运行模式逻辑 (保持不变)
+ */
 if (import.meta.main) {
   const port = Number(process.env.CORE_PROVIDERS_PORT) || 3000;
   

@@ -6,7 +6,14 @@
 - `docs/目录结构说明.md`
 - `docs/总体架构说明.md`
 - `docs/编码约定.md`
-- `docs/模块开发规范.md`
+- `docs/模块开发规范.md`：详细说明了模块结构、api.md 规范以及 joinMCP/joinHTTP 机制。
+
+## 模块注册机制
+
+所有 core 和 modules 目录下的子模块必须在 `index.ts` 中导出满足以下规范的对象：
+
+- `joinHTTP(router: any)`：将模块路由挂载到服务器。
+- `joinMCP(mcpServer: any)`：将模块能力注册到 MCP 服务。
 - `docs/通信与调用说明.md`
 
 ## 项目定位

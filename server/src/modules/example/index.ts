@@ -1,17 +1,19 @@
-// @ts-nocheck
-import type { ServerModule } from "../../core/module";
+import type { RubickModule } from "../../core/module";
 
-const exampleModule: ServerModule = {
-  manifest: {
-    name: "example",
-    basePath: "/example",
-    description: "示例模块，用来演示独立运行和主工程加载两种模式。",
+const exampleModule: RubickModule = {
+  name: "example",
+  async joinHTTP(router: any) {
+    console.log("[module:example] joinHTTP");
+    router.handle("/example/hello", async () => {
+      return { message: "Hello from example module!" };
+    });
   },
-  register() {
-    console.log("[module:example] register");
-  },
-  start() {
-    console.log("[module:example] start");
+  async joinMCP(mcp: any) {
+    console.log("[module:example] joinMCP");
+    mcp.addTool({
+      name: "example_tool",
+      description: "An example tool",
+    });
   },
 };
 
@@ -22,25 +24,25 @@ if (import.meta.main) {
 
   Bun.serve({
     port,
-    fetch(request) {
+    fetch(request: any) {
       const url = new URL(request.url);
 
       if (url.pathname === "/health") {
         return Response.json({
           ok: true,
-          module: exampleModule.manifest.name,
+          module: exampleModule.name,
           mode: "standalone",
         });
       }
 
       return Response.json({
         message: "example module standalone server",
-        basePath: exampleModule.manifest.basePath,
+        module: exampleModule.name,
       });
     },
   });
 
   console.log(
-    `[module:example] standalone mode on http://localhost:${port}${exampleModule.manifest.basePath}`,
+    `[module:example] standalone mode on http://localhost:${port}/example`,
   );
 }
