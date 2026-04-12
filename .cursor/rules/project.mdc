@@ -1,0 +1,51 @@
+---
+description: Rubick project rules and documentation sync requirements
+globs:
+alwaysApply: true
+---
+
+# Rubick Project Rules
+
+Before changing code, read:
+
+- `docs/AI协作规范.md`
+- `docs/目录结构说明.md`
+- `docs/总体架构说明.md`
+- `docs/编码约定.md`
+- `docs/模块开发规范.md`
+- `docs/通信与调用说明.md`
+
+## Project Summary
+
+Rubick is a client work app with backend services. It is not a frontend-only project.
+
+Project layers:
+
+- `server/`: backend service layer
+- `client/web/`: client UI layer
+- `client/server/`: client local backend layer
+- `shared/`: shared types and utilities
+
+## Rules
+
+1. Treat this project as a full client + server application.
+2. Keep HTTP business domains in independent folders whenever possible.
+3. Keep modules self-contained on both client and server.
+4. Keep main business flow in the main business file.
+5. Move non-essential helper functions, helper methods, and member-variable-related helper logic into the module's `help.ts`.
+6. Keep each server module's `.env` and sqlite files inside the module directory whenever possible.
+7. Use relative paths in project documentation. Do not write machine-specific absolute paths.
+
+## Documentation Sync
+
+If a task changes architecture, directory structure, module conventions, communication flow, or design decisions, update the related docs in the same task before finishing.
+
+Always check whether these files need updates:
+
+- `README.md`
+- `docs/目录结构说明.md`
+- `docs/总体架构说明.md`
+- `docs/编码约定.md`
+- `docs/模块开发规范.md`
+- `docs/通信与调用说明.md`
+- `docs/AI协作规范.md`
