@@ -22,6 +22,7 @@ Rubick is a client work app with backend services. It is not a frontend-only pro
 Project layers:
 
 - `server/`: backend service layer
+- `server/src/core/providers/`: core model adaptation layer (Chat, ASR, TTS, etc.)
 - `client/web/`: client UI layer
 - `client/server/`: client local backend layer
 - `shared/`: shared types and utilities

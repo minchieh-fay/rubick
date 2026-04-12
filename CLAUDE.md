@@ -15,6 +15,7 @@ Rubick 是一个带后端服务的客户端 work app，不是纯前端项目。
 核心组成：
 
 - `server/`：服务端能力层
+- `server/src/core/providers/`：核心模型适配层（Chat, ASR, TTS 等）
 - `client/web/`：客户端页面层
 - `client/server/`：客户端本地后台层
 - `shared/`：共享协议、类型、工具
