@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "declaration": true,
+    "outDir": "dist",
+    "rootDir": ".",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"],
+      "@builtin/*": ["builtin/*"],
+      "@custom/*": ["custom/*"],
+      "@core/*": ["core/*"]
+    }
+  },
+  "include": [
+    "core/**/*.ts",
+    "builtin/**/*.ts",
+    "custom/**/*.ts",
+    "server/**/*.ts",
+    "client/**/*.ts",
+    "electron/**/*.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
+}
