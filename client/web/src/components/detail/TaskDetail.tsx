@@ -1,18 +1,67 @@
-import { X, Check, Clock, Tag, Calendar } from 'lucide-react';
+import { X, Check, Clock, Tag, Calendar, Play } from 'lucide-react';
 import { useStore } from '../../store/useStore';
-import type { Activity } from '../../types';
+import type { Activity, SubTask } from '../../types';
+import { subtaskApi, activityApi, agentApi } from '../../api/client';
+import { useState, useEffect } from 'react';
 
 export function TaskDetail() {
-  const { selectedTask, showDetail, selectTask, toggleDetail, subTasks } = useStore();
+  const { selectedTask, showDetail, selectTask, toggleDetail } = useStore();
+  const [taskSubTasks, setTaskSubTasks] = useState<SubTask[]>([]);
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [isExecuting, setIsExecuting] = useState(false);
+
+  // Load subtasks and activities when task is selected
+  useEffect(() => {
+    if (!selectedTask) return;
+    
+    // Load subtasks from API
+    // For now, we'll use the store's subTasks
+    const storeSubTasks = useStore.getState().subTasks.get(selectedTask.id) || [];
+    setTaskSubTasks(storeSubTasks);
+    
+    // Load activities from API
+    activityApi.getByTaskId(selectedTask.id)
+      .then(setActivities)
+      .catch(err => console.error('Failed to load activities:', err));
+  }, [selectedTask]);
 
   if (!selectedTask || !showDetail) return null;
 
-  const taskSubTasks = subTasks.get(selectedTask.id) || [];
-  const activities: Activity[] = [
-    { id: 1, taskId: selectedTask.id, type: 'ai_message', content: 'I\'ve analyzed this task and created the subtasks below.', createdAt: new Date().toISOString() },
-    { id: 2, taskId: selectedTask.id, type: 'user_message', content: 'Looks good, proceed.', createdAt: new Date().toISOString() },
-    { id: 3, taskId: selectedTask.id, type: 'ai_message', content: 'Starting implementation of the first subtask...', createdAt: new Date().toISOString() },
-  ];
+  const handleToggleSubtask = async (subtaskId: number) => {
+    try {
+      await subtaskApi.toggle(selectedTask.id, subtaskId);
+      // Refresh subtasks
+      const storeSubTasks = useStore.getState().subTasks.get(selectedTask.id) || [];
+      setTaskSubTasks(storeSubTasks);
+    } catch (err) {
+      console.error('Failed to toggle subtask:', err);
+    }
+  };
+
+  const handleAutoExecute = async () => {
+    if (!selectedTask) return;
+    setIsExecuting(true);
+    
+    try {
+      const result = await agentApi.autoExecute(selectedTask.id);
+      console.log('Auto-execute result:', result);
+      
+      // Refresh activities
+      const updatedActivities = await activityApi.getByTaskId(selectedTask.id);
+      setActivities(updatedActivities);
+      
+      // Refresh store tasks
+      const { setTasks } = useStore.getState();
+      const { taskApi } = await import('../../api/client');
+      const allTasks = await taskApi.getAll();
+      setTasks(allTasks);
+    } catch (err) {
+      console.error('Auto-execute failed:', err);
+      alert('Failed to execute task: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setIsExecuting(false);
+    }
+  };
 
   return (
     <>
@@ -54,10 +103,23 @@ export function TaskDetail() {
 
             {/* Subtasks */}
             <div>
-              <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
-                <Check className="w-4 h-4" />
-                Subtasks
-              </h4>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-medium flex items-center gap-2">
+                  <Check className="w-4 h-4" />
+                  Subtasks
+                </h4>
+                {taskSubTasks.length > 0 && selectedTask.status !== 'done' && (
+                  <button
+                    onClick={handleAutoExecute}
+                    disabled={isExecuting || selectedTask.status === 'doing'}
+                    className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-[var(--accent)] text-white 
+                      hover:bg-[var(--accent)]/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <Play className="w-3 h-3" />
+                    {isExecuting ? 'Executing...' : 'Auto Execute'}
+                  </button>
+                )}
+              </div>
               <div className="space-y-2">
                 {taskSubTasks.length > 0 ? taskSubTasks.map((st) => (
                   <div key={st.id} className="flex items-center gap-3 p-2 rounded bg-[var(--bg-tertiary)]">
@@ -67,10 +129,11 @@ export function TaskDetail() {
                         backgroundColor: st.isCompleted ? selectedTask.color : 'transparent',
                         borderColor: selectedTask.color 
                       }}
+                      onClick={() => handleToggleSubtask(st.id)}
                     >
                       {st.isCompleted && <span className="text-[10px] text-white">✓</span>}
                     </div>
-                    <span className={`text-sm ${st.isCompleted ? 'line-through text-[var(--text-muted)]' : ''}`}>
+                    <span className={`text-sm flex-1 ${st.isCompleted ? 'line-through text-[var(--text-muted)]' : ''}`}>
                       {st.title}
                     </span>
                   </div>
@@ -102,23 +165,39 @@ export function TaskDetail() {
           </div>
         </div>
 
-        {/* Footer - Metadata */}
-        <div className="border-t border-[var(--border)] p-4 space-y-2 text-xs text-[var(--text-secondary)]">
-          <div className="flex items-center gap-2">
-            <Calendar className="w-3 h-3" />
-            <span>Created: {new Date(selectedTask.createdAt).toLocaleString()}</span>
+        {/* Footer - Metadata + Actions */}
+        <div className="border-t border-[var(--border)] p-4">
+          {/* Action buttons */}
+          <div className="flex gap-2 mb-3">
+            <button
+              onClick={handleAutoExecute}
+              disabled={isExecuting || selectedTask.status === 'doing' || selectedTask.status === 'done'}
+              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm rounded bg-[var(--accent)] text-white 
+                hover:bg-[var(--accent)]/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <Play className="w-4 h-4" />
+              {isExecuting ? 'Executing...' : 'Execute Task'}
+            </button>
           </div>
-          <div className="flex items-center gap-2">
-            <Clock className="w-3 h-3" />
-            <span>Est: {selectedTask.estimatedTime || '-'} | Actual: {selectedTask.actualTime || '-'}</span>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <Tag className="w-3 h-3" />
-            {selectedTask.tags.map(tag => (
-              <span key={tag} className="px-2 py-0.5 rounded bg-[var(--bg-tertiary)]">
-                {tag}
-              </span>
-            ))}
+          
+          {/* Metadata */}
+          <div className="space-y-2 text-xs text-[var(--text-secondary)]">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-3 h-3" />
+              <span>Created: {new Date(selectedTask.createdAt).toLocaleString()}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Clock className="w-3 h-3" />
+              <span>Est: {selectedTask.estimatedTime || '-'} | Actual: {selectedTask.actualTime || '-'}</span>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Tag className="w-3 h-3" />
+              {selectedTask.tags.map(tag => (
+                <span key={tag} className="px-2 py-0.5 rounded bg-[var(--bg-tertiary)]">
+                  {tag}
+                </span>
+              ))}
+            </div>
           </div>
         </div>
       </div>

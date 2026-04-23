@@ -19,6 +19,11 @@ await loadToolsFromDirectories({
   directories: ['builtin/tools', 'custom/tools'],
 });
 
+// TODO: Load skills when skill system is implemented
+// await loadSkillsFromDirectories({
+//   directories: ['builtin/skills', 'custom/skills'],
+// });
+
 // Health check
 app.get('/api/health', (c) => {
   return c.json({ 

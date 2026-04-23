@@ -42,10 +42,10 @@ export class QoderCLIClient implements AIClient {
       });
 
       // Write prompt to stdin
-      const writer = proc.stdin?.writer;
-      if (writer) {
-        await writer.write(prompt);
-        await writer.end();
+      const encoder = new TextEncoder();
+      const stdinData = encoder.encode(prompt);
+      if (proc.stdin) {
+        await proc.stdin.write(stdinData);
       }
 
       // Wait for result with timeout

@@ -52,19 +52,18 @@ export async function executeCLI(
   args: string[],
   context: ToolContext = {}
 ): Promise<ToolResult> {
-  const { cwd = process.cwd(), env = {}, timeout = 30000 } = context;
+  const { cwd = '.', env = {}, timeout = 30000 } = context;
   
-  const spawn = Bun.spawn;
-  const process = spawn([command, ...args], {
+  const proc = Bun.spawn([command, ...args], {
     cwd,
-    env: { ...process.env, ...env },
+    env: { ...Bun.env, ...env },
     stdout: 'pipe',
     stderr: 'pipe',
   });
 
   const timeoutPromise = new Promise<ToolResult>((resolve) => {
     setTimeout(() => {
-      process.kill();
+      proc.kill();
       resolve({
         exitCode: -1,
         stdout: '',
@@ -76,11 +75,11 @@ export async function executeCLI(
 
   const executionPromise = (async () => {
     const [stdout, stderr] = await Promise.all([
-      new Response(process.stdout).text(),
-      new Response(process.stderr).text(),
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
     ]);
     
-    const exitCode = await process.exited;
+    const exitCode = await proc.exited;
     
     return {
       exitCode,

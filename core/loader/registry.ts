@@ -33,7 +33,7 @@ class InMemoryToolRegistry implements ToolRegistry {
   }
   
   has(name: string): boolean {
-    return this.tools.has(name.name);
+    return this.tools.has(name);
   }
 }
 

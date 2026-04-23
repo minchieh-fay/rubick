@@ -146,47 +146,47 @@ AI 分析：需求是否清晰？
 
 ## 当前进度
 
-### [2026-04-23 15:30] 前端 Kanban UI 开发完成
+### [2026-04-23 16:30] AI 引擎开发完成
 
 **完成的工作：**
-- 搭建 React + Vite + Tailwind 前端项目
-- 实现 KanbanBoard 四列布局（Inbox、Todo、Doing、Done）
-- 实现 TaskCard 组件：
-  - 拖拽功能（@dnd-kit）
-  - 颜色指示器
-  - 子任务折叠/展开
-  - 标签和预估时间显示
-- 实现 ChatBar 底部聊天栏
-- 实现 TaskDetail 右侧滑出面板
-- 实现 Header 顶部导航
-- 配置 Zustand 状态管理
-- 修复 Bun 兼容的工具加载器（替换 import.meta.glob）
-- 添加 demo 数据用于 UI 测试
-- 已推送到 origin/main (commit e497056)
+- 处理 yy/qodercli.md 用户需求 - 提炼为 docs/AI引擎设计.md
+- 创建 core/ai 模块（types, prompts, client）
+- 实现 QoderCLI 封装层：
+  - 默认模型 -model "mmodel"
+  - 上层只认 AIClient 接口，不感知 qodercli
+  - 可通过环境变量配置模型和路径
+- 实现 AI 任务分析引擎（POST /api/agent/analyze）
+- 实现 AI 任务执行端点（POST /api/agent/execute）
+- Prompt 模板管理（任务分析、执行、缺工具）
+- 前端对接 AI 分析 API（带降级方案）
+- 已推送到 origin/main (commit 18762fe)
 
 **前端运行地址：** http://localhost:5173
 **后端运行地址：** http://localhost:3000
-
-**待完成：**
-- 后端 Hono + SQLite API
-- 任务 CRUD API
-- AI 任务拆解逻辑（qodercli 集成）
-- 工具执行引擎
-- 前后端联调
+**数据库文件：** data/rubick.db
 
 **当前状态：**
-- 前端 UI 已完成，可以演示
-- 输入文字到聊天栏会创建 demo 任务卡片
-- 卡片可以在列之间拖拽
-- 点击卡片打开详情面板
-- 下一阶段：后端 API + AI 集成
+- AI 引擎框架已就绪
+- 如果 qodercli 不可用，会降级到简单任务创建
+- 核心链路：用户输入 → AI 分析 → 创建任务+子任务 → 看板展示
+
+**待完成：**
+- 工具执行引擎（AI 自动执行子任务）
+- 子任务自动执行流程
+- 任务详情面板子任务完整交互
+- Electron 打包配置
 
 **已知问题/风险：**
-- qodercli 的具体调用方式和能力范围需要调研
-- 数据目前是内存中的 demo 数据，刷新会丢失
-- Electron 打包配置未开始
+- qodercli 需要安装在系统中才能调用
+- AI 分析结果依赖模型质量，可能不准确
+- 子任务目前是静态创建，还没自动执行
 
 **下次启动需要知道的事：**
+- 产品：个人 AI 助手，Kanban 主界面
+- 技术栈：React + Vite + Tailwind + Bun + Hono + bun:sqlite + qodercli
+- AI 引擎：core/ai/ 封装，QoderCLIClient 默认模型 mmodel
+- yy 目录规则：扫描用户想法 → 提炼到 docs → 实施
+- 下一步：工具执行引擎，让 AI 真正能干活
 - 产品定位：个人 AI 全能助手，Kanban 主界面
 - 技术栈：React + Vite + Tailwind + Bun + Hono + SQLite + qodercli
 - 前端已实现完整 UI，等待后端接入

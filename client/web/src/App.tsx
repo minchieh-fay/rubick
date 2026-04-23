@@ -3,20 +3,35 @@ import { Header } from './components/layout/Header';
 import { KanbanBoard } from './components/kanban/KanbanBoard';
 import { ChatBar } from './components/chat/ChatBar';
 import { TaskDetail } from './components/detail/TaskDetail';
-import { COLUMNS, type Task } from './types';
+import { COLUMNS, type Task, type SubTask } from './types';
 import { useStore } from './store/useStore';
-import { taskApi, agentApi } from './api/client';
+import { taskApi, subtaskApi, agentApi } from './api/client';
 
 function App() {
-  const { tasks, setTasks, addTask } = useStore();
+  const { tasks, setTasks, addTask, setSubTasks } = useStore();
   const [isLoading, setIsLoading] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
 
   // Load tasks from API on mount
   useEffect(() => {
-    taskApi.getAll()
-      .then((loadedTasks) => {
+    Promise.all([
+      taskApi.getAll(),
+      taskApi.getAll().then(allTasks => 
+        Promise.all(
+          allTasks.map(task => 
+            subtaskApi.getByTaskId(task.id).catch(() => [])
+          )
+        )
+      )
+    ])
+      .then(([loadedTasks, allSubTasks]) => {
         setTasks(loadedTasks);
+        // Set subtasks for each task
+        allSubTasks.forEach((subTasks, idx) => {
+          if (subTasks.length > 0 && loadedTasks[idx]) {
+            setSubTasks(loadedTasks[idx].id, subTasks);
+          }
+        });
         setIsInitializing(false);
       })
       .catch((err) => {
@@ -37,7 +52,7 @@ function App() {
         alert('AI has questions:\n' + (result.questions || []).join('\n'));
       } else if (result.task) {
         // Task created with subtasks
-        addTask({
+        const newTask = {
           ...result.task,
           parentId: result.task.parent_id,
           estimatedTime: result.task.estimated_time,
@@ -47,10 +62,13 @@ function App() {
           completedAt: result.task.completed_at,
           isBlocked: !!result.task.is_blocked,
           blockReason: result.task.block_reason,
-        });
+        };
         
+        addTask(newTask);
+        
+        // Set subtasks in store
         if (result.subtasks?.length > 0) {
-          console.log(`Created ${result.subtasks.length} subtasks`);
+          setSubTasks(newTask.id, result.subtasks);
         }
       }
     } catch (err) {

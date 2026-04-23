@@ -57,6 +57,11 @@ export const taskApi = {
 };
 
 export const subtaskApi = {
+  getByTaskId: async (taskId: number) => {
+    const { data } = await api.get<{ subtasks: SubTask[] }>(`/tasks/${taskId}`);
+    return data.subtasks || [];
+  },
+  
   create: async (taskId: number, title: string, order?: number) => {
     const { data } = await api.post(`/tasks/${taskId}/subtasks`, { title, order });
     return data;
@@ -88,6 +93,21 @@ export const agentApi = {
   
   execute: async (taskId: number, context?: string) => {
     const { data } = await api.post('/agent/execute', { taskId, context });
+    return data;
+  },
+  
+  executeTool: async (toolName: string, args?: string[], context?: any, taskId?: number) => {
+    const { data } = await api.post('/agent/tool', { toolName, args, context, taskId });
+    return data;
+  },
+  
+  listTools: async () => {
+    const { data } = await api.get('/agent/tools');
+    return data;
+  },
+  
+  autoExecute: async (taskId: number) => {
+    const { data } = await api.post('/agent/auto-execute', { taskId });
     return data;
   },
 };
