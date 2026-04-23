@@ -1,8 +1,17 @@
 import { Hono } from 'hono';
+import { cors } from 'hono/cors';
 import { toolRegistry } from '../core/loader/registry';
 import { loadToolsFromDirectories } from '../core/loader/loader';
+import tasksApi from './api/tasks';
 
 const app = new Hono();
+
+// CORS for frontend development
+app.use('/*', cors({
+  origin: ['http://localhost:5173', 'http://localhost:3000'],
+  allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowHeaders: ['Content-Type'],
+}));
 
 // Load builtin and custom tools on startup
 await loadToolsFromDirectories({
@@ -11,7 +20,11 @@ await loadToolsFromDirectories({
 
 // Health check
 app.get('/api/health', (c) => {
-  return c.json({ status: 'ok', tools: toolRegistry.list().length });
+  return c.json({ 
+    status: 'ok', 
+    tools: toolRegistry.list().length,
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // List all available tools
@@ -38,6 +51,9 @@ app.post('/api/tools/:name/execute', async (c) => {
   const result = await tool.execute(args, context);
   return c.json(result);
 });
+
+// Mount task API routes under /api
+app.route('/api', tasksApi);
 
 const port = 3000;
 console.log(`Server running on http://localhost:${port}`);

@@ -1,119 +1,73 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Header } from './components/layout/Header';
 import { KanbanBoard } from './components/kanban/KanbanBoard';
 import { ChatBar } from './components/chat/ChatBar';
 import { TaskDetail } from './components/detail/TaskDetail';
 import { COLUMNS, type Task } from './types';
 import { useStore } from './store/useStore';
+import { taskApi } from './api/client';
 
-// Demo data - will be replaced by API
-const demoTasks: Task[] = [
-  {
-    id: 1,
-    title: 'Build personal blog website',
-    description: 'Create a personal blog with markdown support',
-    status: 'inbox',
-    parentId: null,
-    color: '#8b5cf6',
-    tags: ['dev', 'frontend'],
-    estimatedTime: '4h',
-    actualTime: '',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    completedAt: null,
-    order: 0,
-    isBlocked: false,
-    blockReason: '',
-  },
-  {
-    id: 2,
-    title: 'Setup CI/CD pipeline',
-    description: 'Configure GitHub Actions for auto deployment',
-    status: 'todo',
-    parentId: null,
-    color: '#3b82f6',
-    tags: ['devops'],
-    estimatedTime: '2h',
-    actualTime: '',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    completedAt: null,
-    order: 0,
-    isBlocked: false,
-    blockReason: '',
-  },
-  {
-    id: 3,
-    title: 'Write API documentation',
-    description: 'Document all REST endpoints',
-    status: 'doing',
-    parentId: null,
-    color: '#22c55e',
-    tags: ['docs'],
-    estimatedTime: '3h',
-    actualTime: '1h',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    completedAt: null,
-    order: 0,
-    isBlocked: false,
-    blockReason: '',
-  },
-  {
-    id: 4,
-    title: 'Research AI models',
-    description: 'Compare different LLM options',
-    status: 'done',
-    parentId: null,
-    color: '#f59e0b',
-    tags: ['research'],
-    estimatedTime: '2h',
-    actualTime: '1.5h',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    completedAt: new Date().toISOString(),
-    order: 0,
-    isBlocked: false,
-    blockReason: '',
-  },
-];
+const colors = ['#8b5cf6', '#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#ec4899', '#06b6d4', '#84cc16'];
 
 function App() {
-  const { tasks, setTasks } = useStore();
+  const { tasks, setTasks, addTask, moveTask } = useStore();
   const [isLoading, setIsLoading] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true);
 
-  // Initialize demo data
-  useState(() => {
-    setTasks(demoTasks);
-  });
+  // Load tasks from API on mount
+  useEffect(() => {
+    taskApi.getAll()
+      .then((loadedTasks) => {
+        setTasks(loadedTasks);
+        setIsInitializing(false);
+      })
+      .catch((err) => {
+        console.error('Failed to load tasks:', err);
+        setIsInitializing(false);
+      });
+  }, []);
 
-  const handleSend = (message: string) => {
+  const handleSend = async (message: string) => {
     setIsLoading(true);
     
-    // Simulate AI processing
-    setTimeout(() => {
-      const newTask: Task = {
-        id: tasks.length + 1,
+    try {
+      // Create task via API
+      const newTask = await taskApi.create({
         title: message,
-        description: 'Auto-created from chat',
+        description: 'Created from chat',
         status: 'inbox',
-        parentId: null,
-        color: `hsl(${Math.random() * 360}, 70%, 60%)`,
+        color: colors[Math.floor(Math.random() * colors.length)],
         tags: ['ai-generated'],
         estimatedTime: '1h',
+      });
+      
+      addTask({
+        ...newTask,
+        parentId: newTask.parentId,
+        estimatedTime: newTask.estimatedTime,
         actualTime: '',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         completedAt: null,
-        order: 0,
         isBlocked: false,
         blockReason: '',
-      };
-      
-      setTasks([...tasks, newTask]);
+      });
+    } catch (err) {
+      console.error('Failed to create task:', err);
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
+
+  if (isInitializing) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-[var(--bg-primary)]">
+        <div className="text-[var(--text-secondary)] animate-pulse">
+          Loading...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen flex flex-col bg-[var(--bg-primary)]">

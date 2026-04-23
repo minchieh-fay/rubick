@@ -4,6 +4,7 @@ import { useStore } from '../../store/useStore';
 import { Column, type TaskStatus } from '../../types';
 import { TaskColumn } from './TaskColumn';
 import { TaskCard } from './TaskCard';
+import { taskApi } from '../../api/client';
 
 interface KanbanBoardProps {
   columns: Column[];
@@ -11,7 +12,7 @@ interface KanbanBoardProps {
 }
 
 export function KanbanBoard({ columns, tasks }: KanbanBoardProps) {
-  const { moveTask, selectTask } = useStore();
+  const { moveTask } = useStore();
   
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -21,7 +22,7 @@ export function KanbanBoard({ columns, tasks }: KanbanBoardProps) {
     })
   );
 
-  function handleDragEnd(event: DragEndEvent) {
+  async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     if (!over) return;
 
@@ -30,7 +31,15 @@ export function KanbanBoard({ columns, tasks }: KanbanBoardProps) {
 
     // Only allow dropping on column drop zones
     if (['inbox', 'todo', 'doing', 'done'].includes(newStatus)) {
+      // Optimistic UI update
       moveTask(taskId, newStatus);
+      
+      // Sync with backend
+      try {
+        await taskApi.moveTask(taskId, newStatus);
+      } catch (err) {
+        console.error('Failed to sync task status:', err);
+      }
     }
   }
 

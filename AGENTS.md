@@ -127,36 +127,48 @@ AI 分析：需求是否清晰？
 
 ## 当前进度
 
-### [2026-04-23 15:00] 产品设计和规划完成
+### [2026-04-23 15:30] 前端 Kanban UI 开发完成
 
 **完成的工作：**
-- 编写完整的产品需求文档 (docs/产品需求文档.md)
-- 定义了 Kanban + 聊天栏的主界面设计
-- 设计了任务卡片、子任务、颜色标签系统
-- 设计了用户流程：需求 → AI 拆解 → 执行 → 完成
-- 设计了越用越好用机制：工具自动注册、模板积累、偏好学习
-- 定义了数据模型（Task、Activity、ToolMeta）
-- 列出功能清单（P0-P3 共 28 个功能）
-- 确认技术选型：React + Vite + Tailwind + qodercli
+- 搭建 React + Vite + Tailwind 前端项目
+- 实现 KanbanBoard 四列布局（Inbox、Todo、Doing、Done）
+- 实现 TaskCard 组件：
+  - 拖拽功能（@dnd-kit）
+  - 颜色指示器
+  - 子任务折叠/展开
+  - 标签和预估时间显示
+- 实现 ChatBar 底部聊天栏
+- 实现 TaskDetail 右侧滑出面板
+- 实现 Header 顶部导航
+- 配置 Zustand 状态管理
+- 修复 Bun 兼容的工具加载器（替换 import.meta.glob）
+- 添加 demo 数据用于 UI 测试
+- 已推送到 origin/main (commit e497056)
+
+**前端运行地址：** http://localhost:5173
+**后端运行地址：** http://localhost:3000
 
 **待完成：**
-- 前端 React + Vite 项目搭建
-- Kanban 看板 UI 实现
-- 后端 API 实现
-- AI 任务拆解逻辑
+- 后端 Hono + SQLite API
+- 任务 CRUD API
+- AI 任务拆解逻辑（qodercli 集成）
 - 工具执行引擎
+- 前后端联调
 
 **当前状态：**
-- 产品设计阶段完成，等待确认是否开始实现
-- PRD 包含详细 UI 原型、数据模型、技术架构、风险应对
+- 前端 UI 已完成，可以演示
+- 输入文字到聊天栏会创建 demo 任务卡片
+- 卡片可以在列之间拖拽
+- 点击卡片打开详情面板
+- 下一阶段：后端 API + AI 集成
 
 **已知问题/风险：**
-- qodercli 的具体调用方式和能力范围需要进一步调研
-- Kanban 拖拽库选择（@dnd-kit vs react-beautiful-dnd）
-- Electron 打包后体积可能较大
+- qodercli 的具体调用方式和能力范围需要调研
+- 数据目前是内存中的 demo 数据，刷新会丢失
+- Electron 打包配置未开始
 
 **下次启动需要知道的事：**
 - 产品定位：个人 AI 全能助手，Kanban 主界面
 - 技术栈：React + Vite + Tailwind + Bun + Hono + SQLite + qodercli
-- 实现计划分四阶段：基础框架 → 核心功能 → AI 集成 → 完善体验
-- PRD 在 docs/产品需求文档.md，包含所有设计细节
+- 前端已实现完整 UI，等待后端接入
+- PRD 在 docs/产品需求文档.md
