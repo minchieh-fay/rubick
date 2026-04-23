@@ -157,3 +157,5 @@ vite.config.ts.timestamp-*
 
 # Synology NAS
 @eaDir
+
+yy/

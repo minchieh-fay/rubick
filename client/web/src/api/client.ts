@@ -80,4 +80,16 @@ export const activityApi = {
   },
 };
 
+export const agentApi = {
+  analyze: async (message: string) => {
+    const { data } = await api.post('/agent/analyze', { message });
+    return data;
+  },
+  
+  execute: async (taskId: number, context?: string) => {
+    const { data } = await api.post('/agent/execute', { taskId, context });
+    return data;
+  },
+};
+
 export default api;

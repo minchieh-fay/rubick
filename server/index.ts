@@ -3,6 +3,7 @@ import { cors } from 'hono/cors';
 import { toolRegistry } from '../core/loader/registry';
 import { loadToolsFromDirectories } from '../core/loader/loader';
 import tasksApi from './api/tasks';
+import agentApi from './api/agent';
 
 const app = new Hono();
 
@@ -52,8 +53,9 @@ app.post('/api/tools/:name/execute', async (c) => {
   return c.json(result);
 });
 
-// Mount task API routes under /api
+// Mount API routes
 app.route('/api', tasksApi);
+app.route('/api/agent', agentApi);
 
 const port = 3000;
 console.log(`Server running on http://localhost:${port}`);

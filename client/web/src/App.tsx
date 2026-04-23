@@ -5,12 +5,10 @@ import { ChatBar } from './components/chat/ChatBar';
 import { TaskDetail } from './components/detail/TaskDetail';
 import { COLUMNS, type Task } from './types';
 import { useStore } from './store/useStore';
-import { taskApi } from './api/client';
-
-const colors = ['#8b5cf6', '#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#ec4899', '#06b6d4', '#84cc16'];
+import { taskApi, agentApi } from './api/client';
 
 function App() {
-  const { tasks, setTasks, addTask, moveTask } = useStore();
+  const { tasks, setTasks, addTask } = useStore();
   const [isLoading, setIsLoading] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
 
@@ -31,29 +29,57 @@ function App() {
     setIsLoading(true);
     
     try {
-      // Create task via API
-      const newTask = await taskApi.create({
-        title: message,
-        description: 'Created from chat',
-        status: 'inbox',
-        color: colors[Math.floor(Math.random() * colors.length)],
-        tags: ['ai-generated'],
-        estimatedTime: '1h',
-      });
+      // Use AI to analyze and create task
+      const result = await agentApi.analyze(message);
       
-      addTask({
-        ...newTask,
-        parentId: newTask.parentId,
-        estimatedTime: newTask.estimatedTime,
-        actualTime: '',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        completedAt: null,
-        isBlocked: false,
-        blockReason: '',
-      });
+      if (result.needsClarification) {
+        // AI needs more info - show questions (future: display in chat)
+        alert('AI has questions:\n' + (result.questions || []).join('\n'));
+      } else if (result.task) {
+        // Task created with subtasks
+        addTask({
+          ...result.task,
+          parentId: result.task.parent_id,
+          estimatedTime: result.task.estimated_time,
+          actualTime: result.task.actual_time,
+          createdAt: result.task.created_at,
+          updatedAt: result.task.updated_at,
+          completedAt: result.task.completed_at,
+          isBlocked: !!result.task.is_blocked,
+          blockReason: result.task.block_reason,
+        });
+        
+        if (result.subtasks?.length > 0) {
+          console.log(`Created ${result.subtasks.length} subtasks`);
+        }
+      }
     } catch (err) {
-      console.error('Failed to create task:', err);
+      console.error('Failed to analyze message:', err);
+      // Fallback: create simple task
+      try {
+        const newTask = await taskApi.create({
+          title: message,
+          description: 'Created from chat',
+          status: 'inbox',
+          color: `hsl(${Math.random() * 360}, 70%, 60%)`,
+          tags: ['ai-generated'],
+          estimatedTime: '1h',
+        });
+        
+        addTask({
+          ...newTask,
+          parentId: newTask.parentId,
+          estimatedTime: newTask.estimatedTime,
+          actualTime: '',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          completedAt: null,
+          isBlocked: false,
+          blockReason: '',
+        });
+      } catch {
+        console.error('Fallback also failed');
+      }
     } finally {
       setIsLoading(false);
     }
