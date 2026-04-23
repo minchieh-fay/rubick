@@ -146,48 +146,60 @@ AI 分析：需求是否清晰？
 
 ## 当前进度
 
-### [2026-04-23 16:30] AI 引擎开发完成
+### [2026-04-23 16:07] 工具执行引擎和自动执行流程完成
 
 **完成的工作：**
-- 处理 yy/qodercli.md 用户需求 - 提炼为 docs/AI引擎设计.md
-- 创建 core/ai 模块（types, prompts, client）
-- 实现 QoderCLI 封装层：
-  - 默认模型 -model "mmodel"
-  - 上层只认 AIClient 接口，不感知 qodercli
-  - 可通过环境变量配置模型和路径
-- 实现 AI 任务分析引擎（POST /api/agent/analyze）
-- 实现 AI 任务执行端点（POST /api/agent/execute）
-- Prompt 模板管理（任务分析、执行、缺工具）
-- 前端对接 AI 分析 API（带降级方案）
-- 已推送到 origin/main (commit 18762fe)
+- 实现 core/executor 模块 - 工具执行引擎
+  - executeTool() - 执行单个工具
+  - executeToolsInSequence() - 顺序执行多个工具
+  - getAvailableTools() - 列出所有可用工具
+  - isToolAvailable() - 检查工具是否存在
+- 修复 tool registry has() 方法的 bug
+- 新增后端 API 端点：
+  - POST /api/agent/tool - 执行指定工具
+  - GET /api/agent/tools - 列出所有工具
+  - POST /api/agent/auto-execute - 自动执行任务的所有子任务（核心 AI 自动化循环）
+- 前端对接：
+  - TaskDetail 面板增加 Auto Execute 按钮
+  - 子任务数据从 API 实时加载
+  - 子任务切换状态同步到后端
+  - 任务状态自动刷新（执行后重新加载看板）
+  - API 客户端增加 executeTool, listTools, autoExecute 方法
+- 修复 TypeScript 错误：
+  - core/ai/client.ts stdin 写入方式（Bun.spawn API）
+  - core/cli/types.ts process 变量冲突
+  - server/api/agent.ts subtask 类型注解
+- 前端依赖安装完成（zustand, axios, @dnd-kit, lucide-react）
+- 已推送到 origin/main (commit cc32c33)
 
 **前端运行地址：** http://localhost:5173
 **后端运行地址：** http://localhost:3000
 **数据库文件：** data/rubick.db
 
 **当前状态：**
-- AI 引擎框架已就绪
-- 如果 qodercli 不可用，会降级到简单任务创建
-- 核心链路：用户输入 → AI 分析 → 创建任务+子任务 → 看板展示
+- 核心链路完整打通：
+  1. 用户输入 → AI 分析 → 创建任务+子任务 → 看板展示
+  2. 点击 Auto Execute → AI 依次执行子任务 → 状态更新 → 卡片移动
+- 工具执行引擎就绪（file-reader, git 已加载）
+- 如果 qodercli 不可用，会降级处理
+- 前端 UI 完整：Kanban + 拖拽 + ChatBar + TaskDetail + Auto Execute
 
 **待完成：**
-- 工具执行引擎（AI 自动执行子任务）
-- 子任务自动执行流程
-- 任务详情面板子任务完整交互
+- qodercli 实际安装和调用（AI 分析质量依赖此）
+- 任务详情面板子任务交互完整对接
+- 任务颜色自动分配（目前随机）
 - Electron 打包配置
+- P2+ 功能（工具自动注册、历史模板推荐、用户偏好学习等）
 
 **已知问题/风险：**
-- qodercli 需要安装在系统中才能调用
+- qodercli 需要安装在系统中才能调用 AI 分析
 - AI 分析结果依赖模型质量，可能不准确
-- 子任务目前是静态创建，还没自动执行
+- 前端初始化时加载子任务可能有竞态条件（需优化）
 
 **下次启动需要知道的事：**
 - 产品：个人 AI 助手，Kanban 主界面
 - 技术栈：React + Vite + Tailwind + Bun + Hono + bun:sqlite + qodercli
 - AI 引擎：core/ai/ 封装，QoderCLIClient 默认模型 mmodel
 - yy 目录规则：扫描用户想法 → 提炼到 docs → 实施
-- 下一步：工具执行引擎，让 AI 真正能干活
-- 产品定位：个人 AI 全能助手，Kanban 主界面
-- 技术栈：React + Vite + Tailwind + Bun + Hono + SQLite + qodercli
-- 前端已实现完整 UI，等待后端接入
+- 下一步：安装 qodercli 让 AI 真正能分析任务，或继续完善 UI 交互细节
 - PRD 在 docs/产品需求文档.md
