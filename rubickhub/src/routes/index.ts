@@ -9,10 +9,13 @@ import {
   listClients,
   getLatestClient,
 } from "../services/data";
+import { logger } from "../services/logger";
 
 export function handleRoutes(req: ServerRequest): Response | null {
   const { method, url } = req;
   const path = new URL(url).pathname;
+
+  logger.debug(`${method} ${path}`);
 
   // ─── Static files ──────────────────────────────────────
   if (path === "/" || path === "/index.html") {
@@ -25,9 +28,29 @@ export function handleRoutes(req: ServerRequest): Response | null {
     const type = plural.slice(0, -1) as "app" | "skill" | "mcp";
 
     if (method === "GET") {
-      const packages = listPackages(type);
-      const sortBy = new URL(url).searchParams.get("sort") || "usageCount";
+      const url = new URL(req.url);
+      const query = url.searchParams.get("q") || "";
+      const authorFilter = url.searchParams.get("author") || "";
+      const sortBy = url.searchParams.get("sort") || "usageCount";
+
+      let packages = listPackages(type);
+
+      // Filter by search query (matches name or author)
+      if (query) {
+        const q = query.toLowerCase();
+        packages = packages.filter(
+          (p) => p.name.toLowerCase().includes(q) || p.author.toLowerCase().includes(q)
+        );
+      }
+
+      // Filter by author
+      if (authorFilter) {
+        const author = authorFilter.toLowerCase();
+        packages = packages.filter((p) => p.author.toLowerCase().includes(author));
+      }
+
       const sorted = sortPackages(packages, sortBy);
+      logger.info(`List ${type}s`, { count: sorted.length, query, author: authorFilter, sortBy });
       return json(sorted);
     }
   }
@@ -106,6 +129,7 @@ async function handleUpload(req: ServerRequest, type: string): Promise<Response>
     const email = formData.get("email") as string;
 
     if (!zipFile) {
+      logger.warn("Upload failed: missing file", { type, author });
       return json({ error: "Missing file" }, 400);
     }
 
@@ -116,6 +140,7 @@ async function handleUpload(req: ServerRequest, type: string): Promise<Response>
     // Format: {type}-{descriptive-name}-{timestamp}-{version}.zip
     const nameMatch = fileName.match(/^(?:app|skill|mcp)-(.+)-\d{14}-(\d+\.\d+\.\d+)\.zip$/);
     if (!nameMatch) {
+      logger.warn("Upload failed: invalid filename format", { fileName });
       return json({ error: "Invalid package filename format" }, 400);
     }
 
@@ -124,6 +149,7 @@ async function handleUpload(req: ServerRequest, type: string): Promise<Response>
 
     // Check duplicate
     if (findPackage(type as any, descriptiveName)) {
+      logger.warn("Upload failed: package already exists", { type, name: descriptiveName });
       return json({ error: `Package "${descriptiveName}" already exists` }, 409);
     }
 
@@ -140,8 +166,10 @@ async function handleUpload(req: ServerRequest, type: string): Promise<Response>
       usageCount: 0,
     });
 
+    logger.info(`Package uploaded`, { type, name: descriptiveName, version, author });
     return json({ success: true, name: descriptiveName, version });
   } catch (err: any) {
+    logger.error("Upload error", { error: err.message });
     return json({ error: err.message }, 500);
   }
 }
@@ -151,6 +179,7 @@ function handleDownload(type: string, fileName: string): Response {
   const pkg = packages.find((p) => p.fileName === fileName);
 
   if (!pkg) {
+    logger.warn("Download failed: package not found", { type, fileName });
     return json({ error: "Package not found" }, 404);
   }
 
@@ -158,6 +187,7 @@ function handleDownload(type: string, fileName: string): Response {
   pkg.downloads += 1;
   savePackages(type as any, packages);
 
+  logger.info(`Package downloaded`, { type, name: pkg.name, downloads: pkg.downloads });
   const filePath = `./data/${type}s/${fileName}`;
   return file(filePath);
 }
@@ -168,6 +198,7 @@ async function handleUsageReport(req: ServerRequest): Promise<Response> {
     const { appName } = body;
 
     if (!appName) {
+      logger.warn("Usage report failed: missing appName");
       return json({ error: "Missing appName" }, 400);
     }
 
@@ -176,10 +207,14 @@ async function handleUsageReport(req: ServerRequest): Promise<Response> {
     if (pkg) {
       pkg.usageCount += 1;
       savePackages("app", packages);
+      logger.info("Usage reported", { appName, usageCount: pkg.usageCount });
+    } else {
+      logger.warn("Usage report: app not found", { appName });
     }
 
     return json({ success: true });
   } catch (err: any) {
+    logger.error("Usage report error", { error: err.message });
     return json({ error: err.message }, 500);
   }
 }

@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>rubick</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header class="header">
+      <h1 class="header-title">rubick</h1>
+      <nav class="header-nav">
+        <button class="tab active" data-page="apps">我的 App</button>
+        <button class="tab" data-page="store">App 仓库</button>
+      </nav>
+    </header>
+
+    <!-- Pages -->
+    <main class="main">
+      <!-- App 页面 -->
+      <div id="page-apps" class="page active">
+        <div id="installed-apps" class="app-grid"></div>
+        <div id="sessions-panel" class="sessions-panel hidden">
+          <!-- Session list and session view will render here -->
+        </div>
+      </div>
+
+      <!-- App 仓库页面 -->
+      <div id="page-store" class="page">
+        <div class="store-header">
+          <input type="text" id="store-search" class="input" placeholder="搜索 app...">
+          <select id="store-sort" class="select">
+            <option value="usageCount">按使用量</option>
+            <option value="downloads">按下载量</option>
+          </select>
+        </div>
+        <div id="store-list" class="store-list"></div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

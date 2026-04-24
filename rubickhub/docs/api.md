@@ -2,6 +2,16 @@
 
 Base URL: `http://localhost:3000`（开发环境）
 
+## CORS
+
+所有接口均支持跨域请求（CORS）。服务端自动添加以下响应头：
+
+```
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Methods: GET, POST, OPTIONS
+Access-Control-Allow-Headers: Content-Type
+```
+
 ---
 
 ## 1. 包列表查询
@@ -10,6 +20,14 @@ Base URL: `http://localhost:3000`（开发环境）
 
 查询参数：
 - `sort` (可选): 排序方式，`usageCount`（默认）| `downloads`
+- `q` (可选): 关键词搜索，匹配包名或作者名（模糊匹配）
+- `author` (可选): 按作者名过滤（模糊匹配）
+
+示例：
+- `/api/apps?sort=downloads` — 按下载量排序
+- `/api/apps?q=ssh` — 搜索包含 "ssh" 的包
+- `/api/apps?author=zhangsan` — 过滤 zhangsan 的包
+- `/api/apps?q=ppt&sort=usageCount` — 搜索并排序
 
 响应：
 ```json
