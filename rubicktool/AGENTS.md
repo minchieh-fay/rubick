@@ -21,6 +21,12 @@
 - `../memory/context.md` — 当前上下文（进行中的任务、进度）
 - `../memory/decisions.md` — 决策记录（为什么这么做）
 
+**共享根目录 .ai/skills/ 技能（所有工程共用）：**
+- `../.ai/skills/rubick-ui-design.md` — 前端设计系统（色板、组件、布局）
+- `../.ai/skills/rubick-typescript.md` — TypeScript 编码规范
+
+前端开发时必须参考 `rubick-ui-design.md`，写代码时必须遵守 `rubick-typescript.md`。
+
 ## 本工程特定规则
 
 ### 技术栈
