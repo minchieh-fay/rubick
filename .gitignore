@@ -159,3 +159,7 @@ vite.config.ts.timestamp-*
 @eaDir
 
 yy/
+
+# Task files (per-project task tracking)
+task.md
+**/task.md
