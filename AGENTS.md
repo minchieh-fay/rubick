@@ -137,69 +137,72 @@ AI 分析：需求是否清晰？
 ## 项目记忆存储
 
 重要信息应持久化到以下文件：
-- `docs/设计思想.md` - 产品定位和架构理念
-- `docs/目录结构说明.md` - 目录结构和职责
-- `docs/变更日志.md` - 重大变更记录
-- `AGENTS.md` - 本文件（角色和进度）
+
+### 文档体系（docs/）
+
+- `docs/products/architecture.md` — 总体架构、术语、流程
+- `docs/products/hub.md` — rubickhub 详细规格
+- `docs/products/tool.md` — rubicktool 详细规格
+- `docs/products/rubick.md` — rubick 运行端详细规格
+- `docs/products/specs.md` — 统一规范（包名、版本、UI、代码组织）
+- `docs/目录结构说明.md` — 目录结构和职责
+
+### 记忆体系（memory/）
+
+三层记忆，各有职责：
+
+| 文件 | 类型 | 内容 |
+|------|------|------|
+| `memory/memory.md` | 长期记忆 | 用户偏好、技术选型、关键约束、产品定位 |
+| `memory/context.md` | 短期上下文 | 正在做什么、下一步、阻塞点 |
+| `memory/decisions.md` | 决策记录 | 为什么这么做、替代方案、决策时间 |
+
+### 文档同步规则
+
+**改代码的同时必须改文档：**
+
+1. 代码结构变更 → 更新 `docs/目录结构说明.md`
+2. 产品逻辑变更 → 更新 `docs/products/` 下对应文档
+3. 规范调整 → 更新 `docs/products/specs.md`
+4. 重要决策 → 追加到 `memory/decisions.md`
+5. 用户偏好/关键约束 → 更新 `memory/memory.md`
+6. 任务状态变更 → 更新 `memory/context.md`
+
+**原则：** 文档是活的，不让文档和代码脱节。
+
+---
+
+## 项目关键约束
+
+- **技术栈：** TypeScript + bun + electrobun + qodercli
+- **优先级：** 简单和可读性 > 安全、性能
+- **安全级别：** 局域网测试级，不做复杂账号体系和权限控制
+- **定位：** 内部局域网协作，不面向公网
 
 ---
 
 ## 当前进度
 
-### [2026-04-23 16:07] 工具执行引擎和自动执行流程完成
+### [2026-04-24] 文档体系建立
 
 **完成的工作：**
-- 实现 core/executor 模块 - 工具执行引擎
-  - executeTool() - 执行单个工具
-  - executeToolsInSequence() - 顺序执行多个工具
-  - getAvailableTools() - 列出所有可用工具
-  - isToolAvailable() - 检查工具是否存在
-- 修复 tool registry has() 方法的 bug
-- 新增后端 API 端点：
-  - POST /api/agent/tool - 执行指定工具
-  - GET /api/agent/tools - 列出所有工具
-  - POST /api/agent/auto-execute - 自动执行任务的所有子任务（核心 AI 自动化循环）
-- 前端对接：
-  - TaskDetail 面板增加 Auto Execute 按钮
-  - 子任务数据从 API 实时加载
-  - 子任务切换状态同步到后端
-  - 任务状态自动刷新（执行后重新加载看板）
-  - API 客户端增加 executeTool, listTools, autoExecute 方法
-- 修复 TypeScript 错误：
-  - core/ai/client.ts stdin 写入方式（Bun.spawn API）
-  - core/cli/types.ts process 变量冲突
-  - server/api/agent.ts subtask 类型注解
-- 前端依赖安装完成（zustand, axios, @dnd-kit, lucide-react）
-- 已推送到 origin/main (commit cc32c33)
-
-**前端运行地址：** http://localhost:5173
-**后端运行地址：** http://localhost:3000
-**数据库文件：** data/rubick.db
-
-**当前状态：**
-- 核心链路完整打通：
-  1. 用户输入 → AI 分析 → 创建任务+子任务 → 看板展示
-  2. 点击 Auto Execute → AI 依次执行子任务 → 状态更新 → 卡片移动
-- 工具执行引擎就绪（file-reader, git 已加载）
-- 如果 qodercli 不可用，会降级处理
-- 前端 UI 完整：Kanban + 拖拽 + ChatBar + TaskDetail + Auto Execute
+- yy/3.md 分解为 5 个产品文档到 docs/products/
+- 创建目录结构说明（docs/目录结构说明.md）
+- 建立三层记忆架构（memory/ 下 3 个文件）
+- 更新 AGENTS.md，写入文档体系和同步规则
 
 **待完成：**
-- qodercli 实际安装和调用（AI 分析质量依赖此）
-- 任务详情面板子任务交互完整对接
-- 任务颜色自动分配（目前随机）
-- Electron 打包配置
-- P2+ 功能（工具自动注册、历史模板推荐、用户偏好学习等）
+- 确认规则体系是否满足用户需求
+- 开始第一个工程的开发
 
-**已知问题/风险：**
-- qodercli 需要安装在系统中才能调用 AI 分析
-- AI 分析结果依赖模型质量，可能不准确
-- 前端初始化时加载子任务可能有竞态条件（需优化）
+**当前状态：**
+文档体系已建立，可以开始编码。等待用户确认下一步。
 
 **下次启动需要知道的事：**
-- 产品：个人 AI 助手，Kanban 主界面
-- 技术栈：React + Vite + Tailwind + Bun + Hono + bun:sqlite + qodercli
-- AI 引擎：core/ai/ 封装，QoderCLIClient 默认模型 mmodel
-- yy 目录规则：扫描用户想法 → 提炼到 docs → 实施
-- 下一步：安装 qodercli 让 AI 真正能分析任务，或继续完善 UI 交互细节
-- PRD 在 docs/产品需求文档.md
+- 三工程：rubickhub（仓库）、rubicktool（生成工具）、rubick（运行端）
+- 技术栈已定：TypeScript + bun + electrobun + qodercli
+- 优先级：简单和可读性 > 安全/性能
+- 文档在 docs/products/ 下，记忆在 memory/ 下
+- yy/ 下的原始文件保留，不删除
+
+---
