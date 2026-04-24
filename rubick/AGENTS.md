@@ -16,6 +16,11 @@
 - `docs/products/rubick.md` — 本工程的详细规格
 - `docs/products/specs.md` — 统一规范（包名、版本、UI、代码组织）
 
+**共享根目录 memory/ 记忆（三层记忆，所有工程共用）：**
+- `../memory/memory.md` — 长期记忆（技术选型、用户偏好、关键约束）
+- `../memory/context.md` — 当前上下文（进行中的任务、进度）
+- `../memory/decisions.md` — 决策记录（为什么这么做）
+
 ## 本工程特定规则
 
 ### 技术栈
