@@ -21,11 +21,11 @@
 - `../memory/context.md` — 当前上下文（进行中的任务、进度）
 - `../memory/decisions.md` — 决策记录（为什么这么做）
 
-**共享根目录 .qoder/skills/ 技能（通过 symlink 自动可用）：**
+**共享根目录 `.agent/skills/` 技能（通过 symlink 自动可用）：**
 - `rubick-ui-design` — 前端设计系统（色板、组件、布局）
 - `rubick-typescript` — TypeScript 编码规范
 
-Skills 通过 `.qoder/skills/` symlink 指向根目录，qodercli 打开本子目录时自动加载。
+Skills 通过 `.agent/skills/` symlink 指向根目录，qodercli 打开本子目录时自动加载。
 前端开发时必须使用 `rubick-ui-design` skill，写代码时必须遵守 `rubick-typescript` skill。
 
 ## 本工程特定规则
