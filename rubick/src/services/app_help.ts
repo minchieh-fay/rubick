@@ -1,12 +1,12 @@
 import { join } from "path";
-import { readdirSync, existsSync } from "fs";
+import { readdirSync, existsSync, mkdirSync, unlinkSync, readFileSync } from "fs";
 
 const DATA_DIR = join(process.cwd(), "data");
 
 // 确保目录存在
 function ensureDir(dir: string): void {
   if (!existsSync(dir)) {
-    Bun.write(dir, "", { createPath: true });
+    mkdirSync(dir, { recursive: true });
   }
 }
 
@@ -25,14 +25,17 @@ export async function installApp(fileName: string, blob: Blob): Promise<string> 
 
   // 写入 zip 文件
   const zipPath = join(appDir, fileName);
-  const zipFile = Bun.file(zipPath);
-  await Bun.write(zipFile, blob);
+  const zipBuffer = new Uint8Array(await blob.arrayBuffer());
+  await Bun.write(zipPath, zipBuffer);
 
-  // 解压 zip
-  await Bun.spawn(["unzip", "-o", zipPath, "-d", appDir]).exited;
+  // 解压 zip（-O 覆盖已存在文件）
+  const unzipResult = await Bun.spawn(["unzip", "-o", zipPath, "-d", appDir]).exited;
+  if (unzipResult !== 0) {
+    throw new Error(`Failed to unzip ${fileName}`);
+  }
 
   // 删除 zip 文件
-  await Bun.file(zipPath).delete();
+  unlinkSync(zipPath);
 
   return appDir;
 }
@@ -40,21 +43,20 @@ export async function installApp(fileName: string, blob: Blob): Promise<string> 
 // 读取 app.json
 export async function readAppManifest(appName: string) {
   const manifestPath = join(DATA_DIR, "apps", appName, "app.json");
-  const file = Bun.file(manifestPath);
-  if (!await file.exists()) {
+  if (!existsSync(manifestPath)) {
     return null;
   }
-  return JSON.parse(await file.text());
+  const content = readFileSync(manifestPath, "utf-8");
+  return JSON.parse(content);
 }
 
 // 读取 prompt.md
 export async function readAppPrompt(appName: string): Promise<string> {
   const promptPath = join(DATA_DIR, "apps", appName, "prompt.md");
-  const file = Bun.file(promptPath);
-  if (!await file.exists()) {
+  if (!existsSync(promptPath)) {
     return "";
   }
-  return file.text();
+  return readFileSync(promptPath, "utf-8");
 }
 
 // 检查 app 是否已安装

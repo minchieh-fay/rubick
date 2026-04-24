@@ -8,6 +8,8 @@ import {
   savePackages,
   listClients,
   getLatestClient,
+  deletePackage,
+  updatePackage,
 } from "../services/data";
 import { logger } from "../services/logger";
 
@@ -22,36 +24,13 @@ export function handleRoutes(req: ServerRequest): Response | null {
     return file("./public/index.html");
   }
 
-  // ─── API: list packages ────────────────────────────────
+  // ─── API: list packages (with pagination) ──────────────
   if (path.match(/^\/api\/(apps|skills|mcps)$/)) {
     const plural = path.split("/").pop()!;
     const type = plural.slice(0, -1) as "app" | "skill" | "mcp";
 
     if (method === "GET") {
-      const url = new URL(req.url);
-      const query = url.searchParams.get("q") || "";
-      const authorFilter = url.searchParams.get("author") || "";
-      const sortBy = url.searchParams.get("sort") || "usageCount";
-
-      let packages = listPackages(type);
-
-      // Filter by search query (matches name or author)
-      if (query) {
-        const q = query.toLowerCase();
-        packages = packages.filter(
-          (p) => p.name.toLowerCase().includes(q) || p.author.toLowerCase().includes(q)
-        );
-      }
-
-      // Filter by author
-      if (authorFilter) {
-        const author = authorFilter.toLowerCase();
-        packages = packages.filter((p) => p.author.toLowerCase().includes(author));
-      }
-
-      const sorted = sortPackages(packages, sortBy);
-      logger.info(`List ${type}s`, { count: sorted.length, query, author: authorFilter, sortBy });
-      return json(sorted);
+      return handleListPackages(req, type);
     }
   }
 
@@ -74,6 +53,22 @@ export function handleRoutes(req: ServerRequest): Response | null {
 
     if (method === "GET" && fileName) {
       return handleDownload(type, fileName);
+    }
+  }
+
+  // ─── API: delete package ───────────────────────────────
+  if (path.match(/^\/api\/(apps|skills|mcps)\/[a-zA-Z0-9_\u4e00-\u9fa5-]+$/)) {
+    const plural = path.split("/")[2]!;
+    const type = plural.slice(0, -1);
+    const name = path.split("/")[3];
+
+    if (name && !["upload", "download"].includes(name)) {
+      if (method === "DELETE") {
+        return handleDeletePackage(type, name);
+      }
+      if (method === "PUT") {
+        return handleUpdatePackage(req, type, name);
+      }
     }
   }
 
@@ -215,6 +210,120 @@ async function handleUsageReport(req: ServerRequest): Promise<Response> {
     return json({ success: true });
   } catch (err: any) {
     logger.error("Usage report error", { error: err.message });
+    return json({ error: err.message }, 500);
+  }
+}
+
+function handleListPackages(req: ServerRequest, type: string): Response {
+  const url = new URL(req.url);
+  const query = url.searchParams.get("q") || "";
+  const authorFilter = url.searchParams.get("author") || "";
+  const sortBy = url.searchParams.get("sort") || "usageCount";
+
+  // Pagination params
+  const page = Math.max(1, parseInt(url.searchParams.get("page") || "1"));
+  const pageSize = Math.min(100, Math.max(1, parseInt(url.searchParams.get("pageSize") || "20")));
+
+  let packages = listPackages(type as any);
+
+  // Filter by search query (matches name or author)
+  if (query) {
+    const q = query.toLowerCase();
+    packages = packages.filter(
+      (p) => p.name.toLowerCase().includes(q) || p.author.toLowerCase().includes(q)
+    );
+  }
+
+  // Filter by author
+  if (authorFilter) {
+    const author = authorFilter.toLowerCase();
+    packages = packages.filter((p) => p.author.toLowerCase().includes(author));
+  }
+
+  const total = packages.length;
+  const sorted = sortPackages(packages, sortBy);
+
+  // Apply pagination
+  const startIndex = (page - 1) * pageSize;
+  const endIndex = startIndex + pageSize;
+  const items = sorted.slice(startIndex, endIndex);
+
+  logger.info(`List ${type}s`, { total, page, pageSize, query, author: authorFilter, sortBy });
+
+  return json({
+    items,
+    pagination: {
+      page,
+      pageSize,
+      total,
+      totalPages: Math.ceil(total / pageSize),
+    },
+  });
+}
+
+function handleDeletePackage(type: string, name: string): Response {
+  const decodedName = decodeURIComponent(name);
+  const found = deletePackage(type as any, decodedName);
+
+  if (!found) {
+    logger.warn("Delete failed: package not found", { type, name: decodedName });
+    return json({ error: "Package not found" }, 404);
+  }
+
+  logger.info("Package deleted", { type, name: decodedName });
+  return json({ success: true, name: decodedName });
+}
+
+async function handleUpdatePackage(req: ServerRequest, type: string, name: string): Promise<Response> {
+  try {
+    const decodedName = decodeURIComponent(name);
+    const formData = await req.formData();
+    const zipFile = formData.get("file") as File | null;
+    const author = formData.get("author") as string | undefined;
+    const email = formData.get("email") as string | undefined;
+
+    if (!zipFile) {
+      logger.warn("Update failed: missing file", { type, name: decodedName });
+      return json({ error: "Missing file" }, 400);
+    }
+
+    // Parse new version from filename
+    const fileName = zipFile.name;
+    const nameMatch = fileName.match(/^(?:app|skill|mcp)-(.+)-\d{14}-(\d+\.\d+\.\d+)\.zip$/);
+    if (!nameMatch) {
+      logger.warn("Update failed: invalid filename format", { fileName });
+      return json({ error: "Invalid package filename format" }, 400);
+    }
+
+    const newName = nameMatch[1];
+    const version = nameMatch[2];
+
+    // Verify name matches
+    if (newName !== decodedName) {
+      logger.warn("Update failed: name mismatch", { expected: decodedName, got: newName });
+      return json({ error: "Package name in filename does not match URL" }, 400);
+    }
+
+    const buffer = await zipFile.arrayBuffer();
+    savePackageFile(type as any, fileName, buffer);
+
+    const updated = updatePackage(type as any, decodedName, {
+      version,
+      author: author,
+      email: email,
+      fileName,
+      uploadedAt: new Date().toISOString(),
+    });
+
+    if (!updated) {
+      logger.warn("Update failed: package not found", { type, name: decodedName });
+      return json({ error: "Package not found" }, 404);
+    }
+
+    logger.info("Package updated", { type, name: decodedName, version });
+    return json({ success: true, name: decodedName, version });
+  } catch (err: any) {
+    logger.error("Update error", { error: err.message });
     return json({ error: err.message }, 500);
   }
 }

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, unlinkSync } from "fs";
 import { join } from "path";
 import type { PackageType, PackageMeta, ClientVersion } from "../types";
 
@@ -90,4 +90,46 @@ export function getLatestClient(name: "rubick" | "rubicktool"): ClientVersion | 
   const matched = clients.filter((c) => c.name === name);
   // Return the first one (can be improved with semver sort later)
   return matched[0];
+}
+
+/** Delete a package and its metadata */
+export function deletePackage(type: PackageType, name: string): boolean {
+  const packages = listPackages(type);
+  const idx = packages.findIndex((p) => p.name === name);
+  if (idx === -1) return false;
+
+  const pkg = packages[idx];
+  const filePath = join(packageDirFor(type), pkg.fileName);
+
+  // Remove zip file if exists
+  if (existsSync(filePath)) {
+    unlinkSync(filePath);
+  }
+
+  // Remove from metadata
+  packages.splice(idx, 1);
+  savePackages(type, packages);
+  return true;
+}
+
+/** Update package version (replace old zip with new version, preserve stats) */
+export function updatePackage(type: PackageType, name: string, newMeta: Partial<PackageMeta>): PackageMeta | null {
+  const packages = listPackages(type);
+  const idx = packages.findIndex((p) => p.name === name);
+  if (idx === -1) return null;
+
+  const old = packages[idx];
+
+  // Remove old zip file if exists
+  if (old.fileName) {
+    const oldPath = join(packageDirFor(type), old.fileName);
+    if (existsSync(oldPath)) {
+      unlinkSync(oldPath);
+    }
+  }
+
+  // Merge: preserve downloads and usageCount unless explicitly overridden
+  packages[idx] = { ...old, ...newMeta };
+  savePackages(type, packages);
+  return packages[idx];
 }

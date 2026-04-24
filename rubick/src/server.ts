@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serveStatic } from "hono/bun";
+import { streamSSE } from "hono/streaming";
 import * as hub from "./services/hub";
 import * as sessionService from "./services/session";
 import * as appService from "./services/app_help";
@@ -110,7 +111,7 @@ app.delete("/api/sessions/:id", (c) => {
   return c.json({ success: deleted });
 });
 
-// 执行 session
+// 执行 session（普通 JSON 返回，兼容旧前端）
 app.post("/api/sessions/:id/execute", async (c) => {
   const id = c.req.param("id");
   const session = sessionService.getSession(id);
@@ -118,7 +119,6 @@ app.post("/api/sessions/:id/execute", async (c) => {
     return c.json({ error: "Session not found" }, 404);
   }
 
-  // 标记为 running
   sessionService.updateSession(id, {
     status: "running",
     startedAt: new Date().toISOString(),
@@ -132,7 +132,6 @@ app.post("/api/sessions/:id/execute", async (c) => {
       completedAt: new Date().toISOString(),
     });
 
-    // 上报使用统计
     await hub.reportUsage(session.appName);
 
     return c.json(result);
@@ -146,7 +145,54 @@ app.post("/api/sessions/:id/execute", async (c) => {
   }
 });
 
-// Hub proxy routes（前端直接请求可能会跨域，通过后端转发）
+// 执行 session（SSE 流式输出）
+app.post("/api/sessions/:id/execute-stream", async (c) => {
+  const id = c.req.param("id");
+  const session = sessionService.getSession(id);
+  if (!session) {
+    return c.json({ error: "Session not found" }, 404);
+  }
+
+  sessionService.updateSession(id, {
+    status: "running",
+    startedAt: new Date().toISOString(),
+  });
+
+  return streamSSE(c, async (stream) => {
+    try {
+      const result = await executor.executeSession(session, (chunk) => {
+        stream.writeSSE({ data: JSON.stringify({ type: "chunk", content: chunk }) });
+      });
+
+      sessionService.updateSession(id, {
+        status: result.success ? "completed" : "error",
+        result: result.output,
+        completedAt: new Date().toISOString(),
+      });
+
+      await hub.reportUsage(session.appName);
+
+      stream.writeSSE({
+        data: JSON.stringify({
+          type: "done",
+          success: result.success,
+          output: result.output,
+        }),
+      });
+    } catch (err) {
+      sessionService.updateSession(id, {
+        status: "error",
+        errorMessage: (err as Error).message,
+        completedAt: new Date().toISOString(),
+      });
+      stream.writeSSE({
+        data: JSON.stringify({ type: "error", error: (err as Error).message }),
+      });
+    }
+  });
+});
+
+// Hub proxy routes
 app.get("/api/hub/apps", async (c) => {
   const apps = await hub.fetchApps();
   return c.json(apps);

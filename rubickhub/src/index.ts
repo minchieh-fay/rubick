@@ -1,5 +1,6 @@
 import { handleRoutes } from "./routes";
 import { ensureDataDirs } from "./services/data";
+import { logger } from "./services/logger";
 
 const PORT = parseInt(process.env.PORT || "3000");
 
@@ -10,10 +11,17 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
+function jsonResponse(data: unknown, status: number): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json", ...CORS_HEADERS },
+  });
+}
+
 // Initialize data directories
 ensureDataDirs();
 
-console.log(`rubickhub starting on port ${PORT}`);
+logger.info(`rubickhub starting on port ${PORT}`);
 
 const server = Bun.serve({
   port: PORT,
@@ -36,15 +44,15 @@ const server = Bun.serve({
           headers: newHeaders,
         });
       }
-      return new Response("Not found", { status: 404 });
+
+      // Unknown route — return structured 404
+      logger.warn("404 Not found", { method: req.method, path: new URL(req.url).pathname });
+      return jsonResponse({ error: "Not found", path: new URL(req.url).pathname }, 404);
     } catch (err: any) {
-      console.error("[ERROR]", err.message);
-      return new Response(JSON.stringify({ error: err.message }), {
-        status: 500,
-        headers: { "Content-Type": "application/json", ...CORS_HEADERS },
-      });
+      logger.error("Unhandled error", { error: err.message, stack: err.stack });
+      return jsonResponse({ error: "Internal server error" }, 500);
     }
   },
 });
 
-console.log(`Listening on http://localhost:${server.port}`);
+logger.info(`Listening on http://localhost:${server.port}`);

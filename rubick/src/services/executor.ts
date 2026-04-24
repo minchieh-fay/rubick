@@ -1,22 +1,22 @@
 import { spawn } from "child_process";
 import { join } from "path";
+import { existsSync, mkdirSync, readFileSync } from "fs";
 import { readAppManifest, readAppPrompt } from "./app_help";
 import type { Session } from "../types";
 
 const DATA_DIR = join(process.cwd(), "data");
 
-interface ExecutionResult {
-  success: boolean;
-  output: string;
-  error?: string;
-}
+// 回调类型：流式输出片段
+export type OutputCallback = (chunk: string) => void;
 
 // 执行 session：创建目录、复制 skill、生成 .mcp.json、调用 qodercli
-export async function executeSession(session: Session): Promise<ExecutionResult> {
+export async function executeSession(session: Session, onOutput?: OutputCallback): Promise<{ success: boolean; output: string; error?: string }> {
   const workDir = join(DATA_DIR, "apps", session.appName, "sessions", session.id);
 
   // 确保工作目录存在
-  Bun.write(join(workDir, ".placeholder"), "", { createPath: true });
+  if (!existsSync(workDir)) {
+    mkdirSync(workDir, { recursive: true });
+  }
 
   // 读取 app 的 prompt.md
   const basePrompt = await readAppPrompt(session.appName);
@@ -27,12 +27,15 @@ export async function executeSession(session: Session): Promise<ExecutionResult>
   // 复制依赖的 skills
   if (manifest?.dependencies?.skills) {
     const skillsDir = join(workDir, ".qoder", "skills");
-    Bun.write(join(skillsDir, ".placeholder"), "", { createPath: true });
+    if (!existsSync(skillsDir)) {
+      mkdirSync(skillsDir, { recursive: true });
+    }
     for (const skillName of manifest.dependencies.skills) {
       const skillSource = join(DATA_DIR, "skills", skillName);
       const skillTarget = join(skillsDir, skillName);
-      // 使用 cp 命令复制
-      await Bun.spawn(["cp", "-r", skillSource, skillTarget]).exited;
+      if (existsSync(skillSource)) {
+        await Bun.spawn(["cp", "-r", skillSource, skillTarget]).exited;
+      }
     }
   }
 
@@ -41,19 +44,24 @@ export async function executeSession(session: Session): Promise<ExecutionResult>
     const mcpConfig: Record<string, { command: string; args: string[] }> = {};
     for (const mcpName of manifest.dependencies.mcps) {
       const mcpDir = join(DATA_DIR, "mcps", mcpName);
-      mcpConfig[mcpName] = {
-        command: "bun",
-        args: [join(mcpDir, "index.ts")],
-      };
+      if (existsSync(mcpDir)) {
+        mcpConfig[mcpName] = {
+          command: "bun",
+          args: [join(mcpDir, "index.ts")],
+        };
+      }
     }
-    await Bun.write(join(workDir, ".mcp.json"), JSON.stringify({ mcpServers: mcpConfig }, null, 2));
+    if (Object.keys(mcpConfig).length > 0) {
+      const mcpPath = join(workDir, ".mcp.json");
+      Bun.write(mcpPath, JSON.stringify({ mcpServers: mcpConfig }, null, 2));
+    }
   }
 
   // 构建提示词：prompt.md + 表单数据 + chat 消息
   const prompt = buildPrompt(basePrompt, session);
 
   // 调用 qodercli
-  return runQodercli(workDir, prompt);
+  return runQodercli(workDir, prompt, onOutput);
 }
 
 function buildPrompt(basePrompt: string, session: Session): string {
@@ -80,7 +88,11 @@ function buildPrompt(basePrompt: string, session: Session): string {
   return prompt;
 }
 
-function runQodercli(workDir: string, prompt: string): Promise<ExecutionResult> {
+function runQodercli(
+  workDir: string,
+  prompt: string,
+  onOutput?: OutputCallback,
+): Promise<{ success: boolean; output: string; error?: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn("qodercli", [
       "--model", "ultimate",
@@ -95,11 +107,15 @@ function runQodercli(workDir: string, prompt: string): Promise<ExecutionResult> 
     let stderr = "";
 
     child.stdout.on("data", (data) => {
-      stdout += data.toString();
+      const chunk = data.toString();
+      stdout += chunk;
+      onOutput?.(chunk);
     });
 
     child.stderr.on("data", (data) => {
-      stderr += data.toString();
+      const chunk = data.toString();
+      stderr += chunk;
+      onOutput?.(chunk);
     });
 
     child.on("close", (code) => {

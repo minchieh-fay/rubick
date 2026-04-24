@@ -7,7 +7,9 @@ let storeApps = [];
 let currentApp = null;
 let currentSession = null;
 let allSessions = [];
+let appManifest = null;
 let formFrozen = false;
+let streamOutput = "";
 
 // ========== API Calls ==========
 async function api(path, opts) {
@@ -30,7 +32,16 @@ async function loadStoreApps() {
   renderStoreApps();
 }
 
+async function loadAppManifest(appName) {
+  try {
+    appManifest = await api(`/api/apps/${appName}/manifest`);
+  } catch {
+    appManifest = null;
+  }
+}
+
 async function createSessionForApp(appName) {
+  await loadAppManifest(appName);
   const session = await api("/api/sessions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -42,18 +53,93 @@ async function createSessionForApp(appName) {
 async function openSession(session) {
   currentSession = session;
   formFrozen = false;
+  streamOutput = "";
+  await loadAppManifest(session.appName);
   renderSessionView();
 }
 
 async function executeCurrentSession() {
-  if (!currentSession) return;
-  const result = await api(`/api/sessions/${currentSession.id}/execute`, {
-    method: "POST",
+  if (!currentSession || formFrozen) return;
+
+  // Collect form data
+  const formData = collectFormData();
+  currentSession.formData = formData;
+
+  // Freeze form
+  formFrozen = true;
+
+  // Update session on server
+  await api(`/api/sessions/${currentSession.id}`, {
+    method: "PATCH",
     headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ formData }),
   });
-  currentSession.status = result.success ? "completed" : "error";
-  currentSession.result = result.output;
-  renderSessionView();
+
+  // Start streaming execution
+  streamOutput = "";
+  renderSessionView(); // re-render to freeze form and show "执行中"
+
+  const eventSource = new EventSource(
+    `/api/sessions/${currentSession.id}/execute-stream`,
+    { methodOverride: "POST" }
+  );
+
+  // EventSource doesn't support POST directly, use fetch + ReadableStream instead
+  eventSource.close();
+  executeWithFetch();
+}
+
+async function executeWithFetch() {
+  try {
+    const res = await fetch(`/api/sessions/${currentSession.id}/execute-stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          const data = JSON.parse(line.slice(6));
+          if (data.type === "chunk") {
+            streamOutput += data.content;
+            updateResultContent();
+          } else if (data.type === "done") {
+            currentSession.status = data.success ? "completed" : "error";
+            currentSession.result = data.output;
+            streamOutput = data.output;
+            renderSessionView();
+          } else if (data.type === "error") {
+            currentSession.status = "error";
+            currentSession.errorMessage = data.error;
+            renderSessionView();
+          }
+        }
+      }
+    }
+  } catch (err) {
+    currentSession.status = "error";
+    currentSession.errorMessage = err.message;
+    renderSessionView();
+  }
+}
+
+function updateResultContent() {
+  const el = document.getElementById("result-content");
+  if (el) {
+    el.textContent = streamOutput;
+    el.scrollTop = el.scrollHeight;
+  }
 }
 
 async function sendChatMessage() {
@@ -69,9 +155,50 @@ async function sendChatMessage() {
   });
   input.value = "";
 
-  // Reload session
   currentSession = await api(`/api/sessions/${currentSession.id}`);
   renderSessionView();
+}
+
+// ========== Form Data Collection ==========
+function collectFormData() {
+  if (!appManifest?.fields) return {};
+  const data = {};
+  for (const field of appManifest.fields) {
+    const el = document.getElementById(`field-${field.key}`);
+    if (el) {
+      data[field.key] = el.value;
+    }
+  }
+  return data;
+}
+
+function renderFormFields() {
+  if (!appManifest?.fields || appManifest.fields.length === 0) {
+    return '<p class="text-sm text-secondary">该 app 没有定义表单字段</p>';
+  }
+
+  return appManifest.fields.map((field) => {
+    const disabled = formFrozen ? "disabled" : "";
+    const required = field.required ? "required" : "";
+    const placeholder = field.placeholder ? `placeholder="${field.placeholder}"` : "";
+
+    let inputHtml = "";
+    if (field.type === "textarea") {
+      inputHtml = `<textarea id="field-${field.key}" class="textarea" ${disabled} ${required} ${placeholder}></textarea>`;
+    } else if (field.type === "select") {
+      const options = (field.options || []).map((o) => `<option value="${o.value}">${o.label}</option>`).join("");
+      inputHtml = `<select id="field-${field.key}" class="select" ${disabled} ${required}><option value="">请选择</option>${options}</select>`;
+    } else {
+      inputHtml = `<input type="${field.type}" id="field-${field.key}" class="input" ${disabled} ${required} ${placeholder}>`;
+    }
+
+    return `
+      <div class="form-field">
+        <label for="field-${field.key}">${field.label}${field.required ? " *" : ""}</label>
+        ${inputHtml}
+      </div>
+    `;
+  }).join("");
 }
 
 // ========== Render ==========
@@ -97,7 +224,7 @@ function renderStoreApps() {
     <div class="store-item">
       <div class="store-item-info">
         <h3>${app.name}</h3>
-        <p>v${app.version} · ${app.author} · ${app.downloads} 下载</p>
+        <p>v${app.version} &middot; ${app.author} &middot; ${app.downloads} 下载</p>
       </div>
       <button class="btn ${app.installed ? 'btn-secondary' : 'btn-primary'} btn-small"
               onclick="installApp('${app.fileName}')"
@@ -157,15 +284,17 @@ function renderSessionView() {
   const panel = document.getElementById("sessions-panel");
   const isRunning = currentSession.status === "running";
   const isCompleted = currentSession.status === "completed";
+  const isError = currentSession.status === "error";
+  const hasResult = currentSession.result || streamOutput;
 
   panel.innerHTML = `
     <div class="session-view">
       <div class="session-header">
         <h3>${currentApp} - 会话</h3>
         <div class="flex gap-2">
-          <button class="btn btn-primary btn-small" id="execute-btn" onclick="executeCurrentSession()"
-                  ${isRunning || isCompleted || formFrozen ? "disabled" : ""}>
-            ${isRunning ? "执行中..." : isCompleted ? "已完成" : "执行"}
+          <button class="btn btn-primary btn-small" onclick="executeCurrentSession()"
+                  ${isRunning || isCompleted || isError || formFrozen ? "disabled" : ""}>
+            ${isRunning ? "执行中..." : isCompleted ? "已完成" : isError ? "出错" : "执行"}
           </button>
           <button class="btn btn-secondary btn-small" onclick="closeSessionView()">关闭</button>
         </div>
@@ -173,9 +302,9 @@ function renderSessionView() {
 
       <!-- Form Section -->
       <div class="form-section">
-        <h4>输入参数</h4>
+        <h4>输入参数${formFrozen ? " (已冻结)" : ""}</h4>
         <div id="form-fields">
-          <p class="text-sm text-secondary">该 app 没有定义表单字段</p>
+          ${renderFormFields()}
         </div>
       </div>
 
@@ -192,10 +321,10 @@ function renderSessionView() {
       </div>
 
       <!-- Result Section -->
-      ${isCompleted || currentSession.result ? `
+      ${isRunning || hasResult ? `
         <div class="result-section">
-          <h4>执行结果</h4>
-          <div class="result-content">${currentSession.result || "无结果"}</div>
+          <h4>${isRunning ? "执行输出..." : "执行结果"}</h4>
+          <div class="result-content" id="result-content">${streamOutput || currentSession.result || ""}</div>
         </div>
       ` : ""}
     </div>
@@ -204,6 +333,9 @@ function renderSessionView() {
   // Scroll chat to bottom
   const chatMessages = document.getElementById("chat-messages");
   if (chatMessages) chatMessages.scrollTop = chatMessages.scrollHeight;
+
+  const resultContent = document.getElementById("result-content");
+  if (resultContent) resultContent.scrollTop = resultContent.scrollHeight;
 }
 
 function renderChatMessages() {
@@ -213,9 +345,15 @@ function renderChatMessages() {
   return currentSession.chatMessages.map((msg) => `
     <div class="chat-msg">
       <div class="chat-msg-user">${msg.role === "user" ? "你" : "系统"}</div>
-      <div class="chat-msg-content">${msg.content}</div>
+      <div class="chat-msg-content">${escapeHtml(msg.content)}</div>
     </div>
   `).join("");
+}
+
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
 }
 
 function statusLabel(status) {
@@ -227,12 +365,14 @@ function closeSessionsPanel() {
   document.getElementById("sessions-panel").classList.add("hidden");
   currentApp = null;
   currentSession = null;
+  appManifest = null;
   loadInstalledApps();
 }
 
 function closeSessionView() {
   currentSession = null;
   formFrozen = false;
+  streamOutput = "";
   loadAppSessions();
 }
 
