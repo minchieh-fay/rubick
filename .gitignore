@@ -69,3 +69,7 @@ coverage/
 *.swp
 *.swo
 *~
+
+# Runtime directories
+.run/
+last.json

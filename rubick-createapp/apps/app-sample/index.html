@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>明天穿什么</title>
+  <script src="/node_modules/vue/dist/vue.global.prod.js"></script>
+  <link rel="stylesheet" href="/node_modules/element-plus/dist/index.css">
+  <script src="/node_modules/element-plus/dist/index.full.min.js"></script>
+  <script src="/node_modules/@element-plus/icons-vue/dist/index.iife.min.js"></script>
+  <style>
+    body { margin: 0; background: #fff; }
+    #app { max-width: 720px; margin: 0 auto; padding: 24px; }
+    .title { font-size: 20px; font-weight: 600; margin-bottom: 24px; color: #1d1d1f; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="title">明天穿什么</div>
+    <el-form :model="form" label-width="100px" label-position="top">
+
+      <el-form-item label="性别">
+        <el-radio-group v-model="form.gender" @change="saveField('gender', '性别')">
+          <el-radio label="male">男</el-radio>
+          <el-radio label="female">女</el-radio>
+        </el-radio-group>
+      </el-form-item>
+
+      <el-form-item label="年龄段">
+        <el-select v-model="form.ageRange" placeholder="请选择" @change="saveField('ageRange', '年龄段')" style="width:100%">
+          <el-option label="18-25岁" value="young" />
+          <el-option label="26-35岁" value="adult" />
+          <el-option label="36-50岁" value="middle" />
+          <el-option label="50岁以上" value="senior" />
+        </el-select>
+      </el-form-item>
+
+      <el-form-item label="场合">
+        <el-select v-model="form.occasion" placeholder="请选择" @change="saveField('occasion', '场合')" style="width:100%">
+          <el-option label="日常通勤" value="work" />
+          <el-option label="约会出行" value="date" />
+          <el-option label="运动休闲" value="sport" />
+          <el-option label="正式场合" value="formal" />
+        </el-select>
+      </el-form-item>
+
+      <el-form-item label="风格偏好">
+        <el-select v-model="form.style" placeholder="请选择" @change="saveField('style', '风格偏好')" style="width:100%">
+          <el-option label="简约" value="minimal" />
+          <el-option label="休闲" value="casual" />
+          <el-option label="时尚" value="fashion" />
+          <el-option label="运动" value="sporty" />
+        </el-select>
+      </el-form-item>
+
+      <el-form-item label="补充说明">
+        <el-input v-model="form.notes" type="textarea" :rows="3" placeholder="如：怕冷、喜欢宽松、有特殊需求等" @input="saveField('notes', '补充说明')" />
+      </el-form-item>
+
+    </el-form>
+  </div>
+  <script>
+    const { createApp, reactive, onMounted } = Vue;
+    const form = reactive({
+      gender: '',
+      ageRange: '',
+      occasion: '',
+      style: '',
+      notes: ''
+    });
+    let currentState = {};
+
+    const saveField = async (key, desc) => {
+      currentState[key] = { value: form[key], desc };
+      await fetch('/api/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: currentState })
+      });
+    };
+
+    const app = createApp({
+      setup() {
+        onMounted(async () => {
+          const res = await fetch('/api/state');
+          const { state } = await res.json();
+          if (state) {
+            currentState = state;
+            for (const [key, entry] of Object.entries(state)) {
+              if (form.hasOwnProperty(key) && entry?.value !== undefined) {
+                form[key] = entry.value;
+              }
+            }
+          }
+        });
+        return { form, saveField };
+      }
+    }).use(ElementPlus);
+    app.mount('#app');
+  </script>
+</body>
+</html>

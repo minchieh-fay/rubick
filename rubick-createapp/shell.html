@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rubick CreateApp — 调试壳</title>
+  <link rel="stylesheet" href="/node_modules/element-plus/dist/index.css">
+  <script src="/node_modules/vue/dist/vue.global.prod.js"></script>
+  <script src="/node_modules/element-plus/dist/index.full.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; overflow: hidden; }
+    #app { display: flex; flex-direction: column; height: 100vh; }
+
+    .header {
+      height: 48px; background: #1d1d1f; color: #fff;
+      display: flex; align-items: center; padding: 0 16px;
+      font-size: 15px; font-weight: 600; flex-shrink: 0;
+    }
+    .header span { opacity: 0.6; font-weight: 400; margin-left: 8px; }
+
+    .form-area { flex: 1; border: none; background: #fff; }
+    .form-area.hidden { display: none; }
+
+    .input-bar {
+      flex-shrink: 0; padding: 12px 16px;
+      background: #fff; border-top: 1px solid #e5e7eb;
+      display: flex; gap: 10px; align-items: flex-end;
+    }
+    .input-bar textarea {
+      flex: 1; resize: none; border: 1px solid #d1d5db; border-radius: 8px;
+      padding: 10px 12px; font-size: 14px; line-height: 1.5;
+      max-height: 120px; outline: none; font-family: inherit;
+    }
+    .input-bar textarea:focus { border-color: #409eff; }
+    .input-bar .send-btn {
+      padding: 10px 24px; background: #409eff; color: #fff;
+      border: none; border-radius: 8px; font-size: 14px; cursor: pointer;
+      white-space: nowrap; font-weight: 500;
+    }
+    .input-bar .send-btn:hover { background: #337ecc; }
+    .input-bar .send-btn:disabled { background: #a0cfff; cursor: not-allowed; }
+
+    .chat-area {
+      flex: 1; overflow-y: auto; padding: 20px;
+      background: #f5f7fa; display: flex; flex-direction: column; gap: 16px;
+    }
+    .chat-area.hidden { display: none; }
+    .message {
+      max-width: 80%; padding: 12px 16px; border-radius: 12px;
+      line-height: 1.6; font-size: 14px; white-space: pre-wrap; word-break: break-word;
+    }
+    .message.user {
+      align-self: flex-end; background: #409eff; color: #fff;
+      border-bottom-right-radius: 4px;
+    }
+    .message.assistant {
+      align-self: flex-start; background: #fff; color: #1d1d1f;
+      border-bottom-left-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    .message.error {
+      align-self: flex-start; background: #fef0f0; color: #f56c6c;
+      border-bottom-left-radius: 4px;
+    }
+    .back-btn {
+      position: fixed; top: 56px; right: 16px; z-index: 100;
+      padding: 6px 14px; background: rgba(0,0,0,0.6); color: #fff;
+      border: none; border-radius: 6px; font-size: 12px; cursor: pointer;
+    }
+    .back-btn:hover { background: rgba(0,0,0,0.8); }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="header">{{ appName }}<span>— 调试模式</span></div>
+
+    <iframe ref="formFrame" class="form-area" :class="{ hidden: showChat }" src="/index.html"></iframe>
+
+    <div class="chat-area" :class="{ hidden: !showChat }">
+      <div v-for="(msg, i) in messages" :key="i" class="message" :class="msg.role">{{ msg.content }}</div>
+    </div>
+    <button v-if="showChat" class="back-btn" @click="showChat = false">← 返回表单</button>
+
+    <div class="input-bar">
+      <textarea v-model="userInput" placeholder="补充说明（可选）... Enter 发送" rows="1" @keydown.enter.exact.prevent="handleSend"></textarea>
+      <button class="send-btn" :disabled="loading" @click="handleSend">{{ loading ? '发送中...' : '发送' }}</button>
+    </div>
+  </div>
+
+  <script>
+    const { createApp, ref, reactive } = Vue;
+    const { ElMessage } = ElementPlus;
+
+    createApp({
+      setup() {
+        const appName = ref('App');
+        const formFrame = ref(null);
+        const showChat = ref(false);
+        const userInput = ref('');
+        const loading = ref(false);
+        const messages = reactive([]);
+
+        fetch('/app.json').then(r => r.json()).then(d => { appName.value = d.name || 'App'; }).catch(() => {});
+
+        const getFormData = async () => {
+          try {
+            const res = await fetch('/api/state');
+            const data = await res.json();
+            if (data.state) {
+              // 转换为 { key: value } 格式
+              const result = {};
+              for (const [key, entry] of Object.entries(data.state)) {
+                if (entry && typeof entry === 'object' && 'value' in entry) {
+                  result[key] = entry.value;
+                }
+              }
+              return result;
+            }
+            return {};
+          } catch (e) {
+            console.warn('读取表单数据失败:', e);
+            return {};
+          }
+        };
+
+        const handleSend = async () => {
+          const formData = await getFormData();
+          const userText = userInput.value.trim();
+          if (!userText && Object.keys(formData).length === 0) { ElMessage.warning('请填写表单或输入内容'); return; }
+          loading.value = true;
+
+          const formSummary = Object.entries(formData).map(([k, v]) => `${k}: ${v}`).join('\n');
+          const displayContent = formSummary ? (userText ? `${formSummary}\n\n${userText}` : formSummary) : userText;
+          messages.push({ role: 'user', content: displayContent });
+
+          let promptTemplate = '';
+          try { promptTemplate = await fetch('/prompt.txt').then(r => r.text()); } catch (e) { promptTemplate = '请处理：{input}'; }
+          const finalPrompt = promptTemplate.replace(/\{form\}/g, JSON.stringify(formData, null, 2)).replace(/\{input\}/g, userText).replace(/\{formData\}/g, formSummary);
+
+          try {
+            const res = await fetch('/api/llm/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: finalPrompt }) });
+            const data = await res.json();
+            messages.push({ role: data.error ? 'error' : 'assistant', content: data.error || data.result });
+          } catch (e) { messages.push({ role: 'error', content: '请求失败: ' + e.message }); }
+
+          loading.value = false;
+          showChat.value = true;
+          userInput.value = '';
+        };
+
+        return { appName, formFrame, showChat, userInput, loading, messages, handleSend };
+      }
+    }).use(ElementPlus).mount('#app');
+  </script>
+</body>
+</html>

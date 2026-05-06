@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
-import { existsSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, readFileSync, writeFileSync, copyFileSync, mkdirSync, readdirSync, statSync, rmSync } from "fs";
 import { join, resolve } from "path";
 
 // --- Config ---
@@ -142,6 +142,32 @@ app.post("/api/http/request", async (c) => {
   }
 });
 
+// --- .run-template → .run copy ---
+function copyDirRecursive(src: string, dest: string): void {
+  if (!existsSync(dest)) mkdirSync(dest, { recursive: true });
+  for (const entry of readdirSync(src)) {
+    const srcPath = join(src, entry);
+    const destPath = join(dest, entry);
+    if (statSync(srcPath).isDirectory()) {
+      copyDirRecursive(srcPath, destPath);
+    } else {
+      copyFileSync(srcPath, destPath);
+    }
+  }
+}
+
+function prepareRunDir(appDir: string): void {
+  const runDir = join(appDir, ".run");
+  const templateDir = join(appDir, ".run-template");
+  if (existsSync(templateDir)) {
+    if (existsSync(runDir)) rmSync(runDir, { recursive: true, force: true });
+    copyDirRecursive(templateDir, runDir);
+    console.log(`[run] Copied .run-template → .run`);
+  } else {
+    console.log(`[run] No .run-template found, skipping .run setup`);
+  }
+}
+
 // --- Backend/ Directory Loading ---
 async function loadBackend(backendDir: string, honoApp: Hono): Promise<void> {
   const indexPath = join(backendDir, "index.ts");
@@ -175,11 +201,28 @@ async function loadBackend(backendDir: string, honoApp: Hono): Promise<void> {
 }
 
 // --- Static File Serving ---
-// Serve index.html and other static files from app directory
+const createappRoot = resolve(__dirname);
+
+// Serve shell.html as the default page
+app.get("/", (c) => {
+  return c.html(readFileSync(join(createappRoot, "shell.html"), "utf-8"));
+});
+
+// Serve app directory files (index.html loaded in iframe, plus assets)
+app.get("/index.html", serveStatic({ root: resolvedAppDir }));
+app.get("/app.json", serveStatic({ root: resolvedAppDir }));
+app.get("/prompt.txt", serveStatic({ root: resolvedAppDir }));
+app.get("/last.json", serveStatic({ root: resolvedAppDir }));
 app.get("/*", serveStatic({ root: resolvedAppDir }));
+
+// Serve node_modules from rubick-createapp root
+app.get("/node_modules/*", serveStatic({ root: createappRoot }));
 
 // --- Start Server ---
 async function main() {
+  // Copy .run-template → .run
+  prepareRunDir(resolvedAppDir);
+
   // Load backend routes before starting
   const backendDir = join(resolvedAppDir, "backend");
   await loadBackend(backendDir, app);
