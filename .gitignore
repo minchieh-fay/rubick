@@ -1,0 +1,71 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# TypeScript
+*.tsbuildinfo
+.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS files
+.DS_Store
+._*
+.AppleDouble
+.LSOverride
+Icon
+
+# NAS / Synology
+@eaDir
+@__thumb
+SynologyResource
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Package manager locks (optional, keep if you want to track them)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Cache
+.cache/
+.parcel-cache/
+.turbo/
+.vercel/
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
