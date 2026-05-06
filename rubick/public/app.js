@@ -6,10 +6,10 @@ let installedApps = [];
 let storeApps = [];
 let currentApp = null;
 let currentSession = null;
-let allSessions = [];
 let appManifest = null;
 let formFrozen = false;
 let streamOutput = "";
+let inlineError = null; // { message, timer }
 
 // ========== API Calls ==========
 async function api(path, opts) {
@@ -22,12 +22,12 @@ async function api(path, opts) {
 }
 
 async function loadInstalledApps() {
-  installedApps = await api("/api/apps/installed");
+  installedApps = await api("/api/apps");
   renderInstalledApps();
 }
 
 async function loadStoreApps() {
-  const sort = document.getElementById("store-sort").value;
+  const sort = document.getElementById("store-sort")?.value || "usageCount";
   storeApps = await api(`/api/hub/apps?sort=${sort}`);
   renderStoreApps();
 }
@@ -61,35 +61,24 @@ async function openSession(session) {
 async function executeCurrentSession() {
   if (!currentSession || formFrozen) return;
 
-  // Collect form data
   const formData = collectFormData();
   currentSession.formData = formData;
-
-  // Freeze form
   formFrozen = true;
 
-  // Update session on server
   await api(`/api/sessions/${currentSession.id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ formData }),
   });
 
-  // Start streaming execution
   streamOutput = "";
-  renderSessionView(); // re-render to freeze form and show "执行中"
-
-  const eventSource = new EventSource(
-    `/api/sessions/${currentSession.id}/execute-stream`,
-    { methodOverride: "POST" }
-  );
-
-  // EventSource doesn't support POST directly, use fetch + ReadableStream instead
-  eventSource.close();
+  renderSessionView();
   executeWithFetch();
 }
 
 async function executeWithFetch() {
+  if (!currentSession) return;
+
   try {
     const res = await fetch(`/api/sessions/${currentSession.id}/execute-stream`, {
       method: "POST",
@@ -136,15 +125,18 @@ async function executeWithFetch() {
 
 function updateResultContent() {
   const el = document.getElementById("result-content");
-  if (el) {
-    el.textContent = streamOutput;
-    el.scrollTop = el.scrollHeight;
-  }
+  if (!el) return;
+  // Replace loading spinner with actual output
+  const loadingContainer = el.querySelector(".loading-container");
+  if (loadingContainer) loadingContainer.remove();
+  el.textContent = streamOutput;
+  el.scrollTop = el.scrollHeight;
 }
 
 async function sendChatMessage() {
   if (!currentSession) return;
   const input = document.getElementById("chat-input");
+  if (!input) return;
   const content = input.value.trim();
   if (!content) return;
 
@@ -204,20 +196,30 @@ function renderFormFields() {
 // ========== Render ==========
 function renderInstalledApps() {
   const container = document.getElementById("installed-apps");
+  if (!container) return;
+
   if (installedApps.length === 0) {
     container.innerHTML = '<p class="text-secondary">尚未安装任何 app，前往 App 仓库安装</p>';
     return;
   }
   container.innerHTML = installedApps.map((app) => `
-    <div class="app-card" onclick="openApp('${app}')">
-      <div class="app-card-title">${app}</div>
+    <div class="app-card">
+      <div class="app-card-content" onclick="openApp('${app.name}')" style="flex:1;cursor:pointer;">
+        <div class="app-card-title">${app.name}</div>
+        <div class="app-card-version">v${app.version}</div>
+      </div>
+      <button class="btn btn-secondary btn-small" onclick="showAppDetail('${app.name}')" title="详情">详情</button>
+      <button class="btn btn-secondary btn-small" onclick="uninstallApp('${app.name}')" title="卸载">卸载</button>
     </div>
   `).join("");
 }
 
 function renderStoreApps() {
   const container = document.getElementById("store-list");
-  const search = document.getElementById("store-search").value.toLowerCase();
+  if (!container) return;
+
+  const searchEl = document.getElementById("store-search");
+  const search = searchEl ? searchEl.value.toLowerCase() : "";
   const filtered = storeApps.filter((a) => a.name.toLowerCase().includes(search));
 
   container.innerHTML = filtered.map((app) => `
@@ -241,27 +243,29 @@ function openApp(appName) {
 }
 
 async function loadAppSessions() {
-  allSessions = await api(`/api/sessions/app/${currentApp}`);
-  renderSessionsList();
+  if (!currentApp) return;
+  const sessions = await api(`/api/sessions/app/${currentApp}`);
+  renderSessionsList(sessions);
 }
 
-function renderSessionsList() {
+function renderSessionsList(sessions) {
   const panel = document.getElementById("sessions-panel");
+  if (!panel) return;
   panel.classList.remove("hidden");
 
   let html = `
     <div class="flex items-center gap-4" style="margin-bottom: var(--spacing-4);">
-      <h2>${currentApp}</h2>
+      <h2>${escapeHtml(currentApp)}</h2>
       <button class="btn btn-primary btn-small" onclick="createSessionForApp('${currentApp}')">新建会话</button>
       <button class="btn btn-secondary btn-small" onclick="closeSessionsPanel()">返回</button>
     </div>
     <div class="session-list">
   `;
 
-  if (allSessions.length === 0) {
+  if (!sessions || sessions.length === 0) {
     html += '<p class="text-secondary">暂无会话</p>';
   } else {
-    html += allSessions.map((s) => `
+    html += sessions.map((s) => `
       <div class="session-item ${currentSession?.id === s.id ? 'active' : ''}" onclick="openSessionById('${s.id}')">
         <span class="text-sm">${new Date(s.createdAt).toLocaleString()}</span>
         <span class="session-status ${s.status}">${statusLabel(s.status)}</span>
@@ -273,15 +277,23 @@ function renderSessionsList() {
   panel.innerHTML = html;
 }
 
-function openSessionById(id) {
-  const session = allSessions.find((s) => s.id === id);
-  if (session) {
-    openSession(session);
+async function openSessionById(id) {
+  try {
+    const session = await api(`/api/sessions/${id}`);
+    if (session) {
+      openSession(session);
+    }
+  } catch {
+    // session not found or API error
   }
 }
 
 function renderSessionView() {
+  if (!currentSession) return;
+
   const panel = document.getElementById("sessions-panel");
+  if (!panel) return;
+
   const isRunning = currentSession.status === "running";
   const isCompleted = currentSession.status === "completed";
   const isError = currentSession.status === "error";
@@ -290,7 +302,7 @@ function renderSessionView() {
   panel.innerHTML = `
     <div class="session-view">
       <div class="session-header">
-        <h3>${currentApp} - 会话</h3>
+        <h3>${escapeHtml(currentApp)} - 会话</h3>
         <div class="flex gap-2">
           <button class="btn btn-primary btn-small" onclick="executeCurrentSession()"
                   ${isRunning || isCompleted || isError || formFrozen ? "disabled" : ""}>
@@ -321,16 +333,25 @@ function renderSessionView() {
       </div>
 
       <!-- Result Section -->
-      ${isRunning || hasResult ? `
+      ${isRunning ? `
         <div class="result-section">
-          <h4>${isRunning ? "执行输出..." : "执行结果"}</h4>
-          <div class="result-content" id="result-content">${streamOutput || currentSession.result || ""}</div>
+          <h4>执行输出...</h4>
+          <div class="result-content" id="result-content">
+            <div class="loading-container">
+              <div class="loading-spinner"></div>
+              <div class="loading-text">正在执行中，请稍候...</div>
+            </div>
+          </div>
+        </div>
+      ` : hasResult ? `
+        <div class="result-section">
+          <h4>执行结果</h4>
+          <div class="result-content" id="result-content">${escapeHtml(streamOutput || currentSession.result || "")}</div>
         </div>
       ` : ""}
     </div>
   `;
 
-  // Scroll chat to bottom
   const chatMessages = document.getElementById("chat-messages");
   if (chatMessages) chatMessages.scrollTop = chatMessages.scrollHeight;
 
@@ -362,7 +383,8 @@ function statusLabel(status) {
 }
 
 function closeSessionsPanel() {
-  document.getElementById("sessions-panel").classList.add("hidden");
+  const panel = document.getElementById("sessions-panel");
+  if (panel) panel.classList.add("hidden");
   currentApp = null;
   currentSession = null;
   appManifest = null;
@@ -376,6 +398,84 @@ function closeSessionView() {
   loadAppSessions();
 }
 
+async function showAppDetail(appName) {
+  const manifest = await api(`/api/apps/${appName}/manifest`);
+  if (!manifest) return;
+  renderAppDetailModal(manifest);
+}
+
+function renderAppDetailModal(manifest) {
+  const overlay = document.createElement("div");
+  overlay.id = "app-detail-overlay";
+  overlay.className = "modal-overlay";
+  overlay.onclick = closeAppDetail;
+
+  const deps = manifest.dependencies || {};
+  const skills = deps.skills || [];
+  const mcps = deps.mcps || [];
+  const fields = manifest.fields || [];
+
+  overlay.innerHTML = `
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <h2>${escapeHtml(manifest.name || "未知")}</h2>
+        <button class="btn btn-secondary btn-small" onclick="closeAppDetail()">关闭</button>
+      </div>
+      <div class="modal-body">
+        <div class="detail-row">
+          <span class="detail-label">版本</span>
+          <span class="detail-value">v${escapeHtml(manifest.version || "unknown")}</span>
+        </div>
+        ${manifest.description ? `
+        <div class="detail-row">
+          <span class="detail-label">描述</span>
+          <span class="detail-value">${escapeHtml(manifest.description)}</span>
+        </div>` : ""}
+        ${manifest.author ? `
+        <div class="detail-row">
+          <span class="detail-label">作者</span>
+          <span class="detail-value">${escapeHtml(manifest.author)}</span>
+        </div>` : ""}
+        ${skills.length > 0 ? `
+        <div class="detail-row">
+          <span class="detail-label">依赖 Skills</span>
+          <span class="detail-value">${skills.map(s => `<code>${escapeHtml(s)}</code>`).join(", ")}</span>
+        </div>` : ""}
+        ${mcps.length > 0 ? `
+        <div class="detail-row">
+          <span class="detail-label">依赖 MCPs</span>
+          <span class="detail-value">${mcps.map(m => `<code>${escapeHtml(m)}</code>`).join(", ")}</span>
+        </div>` : ""}
+        ${fields.length > 0 ? `
+        <div class="detail-row">
+          <span class="detail-label">表单字段</span>
+          <div class="detail-value">
+            <table class="detail-table">
+              <thead><tr><th>字段名</th><th>类型</th><th>必填</th></tr></thead>
+              <tbody>
+                ${fields.map(f => `
+                  <tr>
+                    <td>${escapeHtml(f.label)} (${escapeHtml(f.key)})</td>
+                    <td>${f.type}</td>
+                    <td>${f.required ? "是" : "否"}</td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        </div>` : ""}
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+}
+
+function closeAppDetail() {
+  const overlay = document.getElementById("app-detail-overlay");
+  if (overlay) overlay.remove();
+}
+
 async function installApp(fileName) {
   try {
     await api("/api/apps/install", {
@@ -383,11 +483,56 @@ async function installApp(fileName) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ fileName }),
     });
-    alert("安装成功");
+    showSuccess("安装成功");
     loadStoreApps();
     loadInstalledApps();
   } catch (err) {
-    alert("安装失败: " + err.message);
+    showError("安装失败: " + err.message);
+  }
+}
+
+async function uninstallApp(appName) {
+  if (!confirm(`确定要卸载 "${appName}" 吗？相关会话数据也会被删除。`)) return;
+  try {
+    await api(`/api/apps/${appName}`, { method: "DELETE" });
+    showSuccess("卸载成功");
+    if (currentApp === appName) {
+      currentApp = null;
+      currentSession = null;
+      appManifest = null;
+    }
+    loadInstalledApps();
+  } catch (err) {
+    showError("卸载失败: " + err.message);
+  }
+}
+
+// ========== Inline Notification Display ==========
+function showNotification(message, type) {
+  clearInlineError();
+  inlineError = { message };
+  const el = document.getElementById("inline-error");
+  if (!el) return;
+  el.textContent = message;
+  el.style.color = type === "success" ? "var(--success)" : "var(--error)";
+  inlineError.timer = setTimeout(clearInlineError, 3000);
+}
+
+function showError(message) {
+  showNotification(message, "error");
+}
+
+function showSuccess(message) {
+  showNotification(message, "success");
+}
+
+function clearInlineError() {
+  if (inlineError?.timer) clearTimeout(inlineError.timer);
+  inlineError = null;
+  const el = document.getElementById("inline-error");
+  if (el) {
+    el.textContent = "";
+    el.style.color = "";
   }
 }
 
@@ -398,7 +543,7 @@ document.querySelectorAll(".tab").forEach((tab) => {
     document.querySelectorAll(".page").forEach((p) => p.classList.remove("active"));
     tab.classList.add("active");
     const page = tab.dataset.page;
-    document.getElementById(`page-${page}`).classList.add("active");
+    document.getElementById(`page-${page}`)?.classList.add("active");
     currentPage = page;
 
     if (page === "apps") loadInstalledApps();
@@ -406,8 +551,11 @@ document.querySelectorAll(".tab").forEach((tab) => {
   });
 });
 
-document.getElementById("store-search").addEventListener("input", renderStoreApps);
-document.getElementById("store-sort").addEventListener("change", loadStoreApps);
+const searchEl = document.getElementById("store-search");
+if (searchEl) searchEl.addEventListener("input", renderStoreApps);
+
+const sortEl = document.getElementById("store-sort");
+if (sortEl) sortEl.addEventListener("change", loadStoreApps);
 
 // ========== Init ==========
 loadInstalledApps();

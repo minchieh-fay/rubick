@@ -31,7 +31,7 @@ function loadSession(id: string): Session | undefined {
 }
 
 export function createSession(appName: string): Session {
-  const id = Date.now().toString();
+  const id = crypto.randomUUID();
   const session: Session = {
     id,
     appName,
@@ -80,7 +80,7 @@ export function addChatMessage(id: string, message: Omit<ChatMessage, "id" | "ti
   if (!session) return undefined;
   session.chatMessages.push({
     ...message,
-    id: Date.now().toString(),
+    id: crypto.randomUUID(),
     timestamp: new Date().toISOString(),
   });
   saveSession(session);

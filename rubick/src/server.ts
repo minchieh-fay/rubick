@@ -18,23 +18,20 @@ app.use("/*", serveStatic({ root: "./public" }));
 
 // ========== API Routes ==========
 
-// App 列表（合并 hub 列表和本地安装状态）
+// 已安装的 app 列表（"我的 App"页面用）
 app.get("/api/apps", async (c) => {
-  const hubApps = await hub.fetchApps();
-  const installedApps = appService.getInstalledApps();
-
-  const merged: AppInfo[] = hubApps.map((h) => ({
-    ...h,
-    installed: installedApps.includes(h.name),
-  }));
-
-  return c.json(merged);
-});
-
-// 已安装的 app 列表（本地）
-app.get("/api/apps/installed", (c) => {
-  const installed = appService.getInstalledApps();
-  return c.json(installed);
+  const installedNames = appService.getInstalledApps();
+  const apps = [];
+  for (const name of installedNames) {
+    const manifest = await appService.readAppManifest(name);
+    apps.push({
+      name,
+      version: manifest?.version ?? "unknown",
+      description: manifest?.description ?? "",
+      installed: true,
+    });
+  }
+  return c.json(apps);
 });
 
 // 安装 app
@@ -47,6 +44,22 @@ app.post("/api/apps/install", async (c) => {
   } catch (err) {
     return c.json({ success: false, error: (err as Error).message }, 500);
   }
+});
+
+// 卸载 app
+app.delete("/api/apps/:name", async (c) => {
+  const name = c.req.param("name");
+  // 删除该 app 的所有 session
+  const appSessions = sessionService.getAppSessions(name);
+  for (const session of appSessions) {
+    sessionService.closeSession(session.id);
+  }
+  // 删除 app 目录
+  const uninstalled = appService.uninstallApp(name);
+  if (!uninstalled) {
+    return c.json({ error: "App not found" }, 404);
+  }
+  return c.json({ success: true });
 });
 
 // 获取 app 的 manifest

@@ -1,5 +1,5 @@
 import { join } from "path";
-import { readdirSync, existsSync, mkdirSync, unlinkSync, readFileSync } from "fs";
+import { readdirSync, existsSync, mkdirSync, unlinkSync, readFileSync, rmSync } from "fs";
 
 const DATA_DIR = join(process.cwd(), "data");
 
@@ -72,4 +72,14 @@ export function getInstalledApps(): string[] {
     return [];
   }
   return readdirSync(appsDir);
+}
+
+// 卸载 app：删除 app 目录
+export function uninstallApp(appName: string): boolean {
+  const appDir = join(DATA_DIR, "apps", appName);
+  if (!existsSync(appDir)) {
+    return false;
+  }
+  rmSync(appDir, { recursive: true, force: true });
+  return true;
 }

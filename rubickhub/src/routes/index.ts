@@ -24,6 +24,16 @@ export function handleRoutes(req: ServerRequest): Response | null {
     return file("./public/index.html");
   }
 
+  // ─── API: upload package (MUST be before list route) ───
+  if (path.match(/^\/api\/(apps|skills|mcps)\/upload$/)) {
+    const plural = path.split("/")[2]!;
+    const type = plural.slice(0, -1);
+
+    if (method === "POST") {
+      return handleUploadDirect(req, type);
+    }
+  }
+
   // ─── API: list packages (with pagination) ──────────────
   if (path.match(/^\/api\/(apps|skills|mcps)$/)) {
     const plural = path.split("/").pop()!;
@@ -31,16 +41,6 @@ export function handleRoutes(req: ServerRequest): Response | null {
 
     if (method === "GET") {
       return handleListPackages(req, type);
-    }
-  }
-
-  // ─── API: upload package ───────────────────────────────
-  if (path.match(/^\/api\/(apps|skills|mcps)\/upload$/)) {
-    const plural = path.split("/")[2]!;
-    const type = plural.slice(0, -1);
-
-    if (method === "POST") {
-      return handleUpload(req, type);
     }
   }
 
@@ -56,8 +56,8 @@ export function handleRoutes(req: ServerRequest): Response | null {
     }
   }
 
-  // ─── API: delete package ───────────────────────────────
-  if (path.match(/^\/api\/(apps|skills|mcps)\/[a-zA-Z0-9_\u4e00-\u9fa5-]+$/)) {
+  // ─── API: delete/update package ──────────────────────────
+  if (path.match(/^\/api\/(apps|skills|mcps)\/.+$/)) {
     const plural = path.split("/")[2]!;
     const type = plural.slice(0, -1);
     const name = path.split("/")[3];
@@ -116,12 +116,19 @@ function sortPackages(packages: any[], sortBy: string): any[] {
   });
 }
 
-async function handleUpload(req: ServerRequest, type: string): Promise<Response> {
+async function handleUploadDirect(req: ServerRequest, type: string): Promise<Response> {
   try {
-    const formData = await req.formData();
+    // Read body as arrayBuffer first, then parse formData from it
+    const rawBuffer = await req.arrayBuffer();
+    const contentType = req.headers.get("content-type") || "";
+
+    // Create a new Response from the buffer to parse formData
+    const res = new Response(rawBuffer, { headers: { "content-type": contentType } });
+    const formData = await res.formData();
+
     const zipFile = formData.get("file") as File | null;
-    const author = formData.get("author") as string;
-    const email = formData.get("email") as string;
+    const author = (formData.get("author") as string) || "";
+    const email = (formData.get("email") as string) || "";
 
     if (!zipFile) {
       logger.warn("Upload failed: missing file", { type, author });
@@ -129,10 +136,26 @@ async function handleUpload(req: ServerRequest, type: string): Promise<Response>
     }
 
     const fileName = zipFile.name;
+    if (!fileName) {
+      logger.warn("Upload failed: missing file name", { type, author });
+      return json({ error: "Missing file name" }, 400);
+    }
     const buffer = await zipFile.arrayBuffer();
+    logger.debug("File received", { fileName, size: buffer.byteLength });
+
+    // Validate zip structure: must contain package.json
+    try {
+      const hasPackageJson = await validateZipStructure(buffer);
+      if (!hasPackageJson) {
+        logger.warn("Upload failed: zip missing package.json", { fileName });
+        return json({ error: "Invalid package: zip file must contain package.json" }, 400);
+      }
+    } catch (err: any) {
+      logger.error("Upload validation error", { error: err.message });
+      return json({ error: "Failed to validate package archive" }, 400);
+    }
 
     // Parse package name from filename
-    // Format: {type}-{descriptive-name}-{timestamp}-{version}.zip
     const nameMatch = fileName.match(/^(?:app|skill|mcp)-(.+)-\d{14}-(\d+\.\d+\.\d+)\.zip$/);
     if (!nameMatch) {
       logger.warn("Upload failed: invalid filename format", { fileName });
@@ -161,11 +184,11 @@ async function handleUpload(req: ServerRequest, type: string): Promise<Response>
       usageCount: 0,
     });
 
-    logger.info(`Package uploaded`, { type, name: descriptiveName, version, author });
+    logger.info("Package uploaded", { type, name: descriptiveName, version, author });
     return json({ success: true, name: descriptiveName, version });
   } catch (err: any) {
     logger.error("Upload error", { error: err.message });
-    return json({ error: err.message }, 500);
+    return json({ error: "Failed to process upload" }, 500);
   }
 }
 
@@ -305,15 +328,30 @@ async function handleUpdatePackage(req: ServerRequest, type: string, name: strin
     }
 
     const buffer = await zipFile.arrayBuffer();
+
+    // Validate zip structure: must contain package.json
+    try {
+      const hasPackageJson = await validateZipStructure(buffer);
+      if (!hasPackageJson) {
+        logger.warn("Update failed: zip missing package.json", { fileName });
+        return json({ error: "Invalid package: zip file must contain package.json" }, 400);
+      }
+    } catch (err: any) {
+      logger.error("Update validation error", { error: err.message });
+      return json({ error: "Failed to validate package archive" }, 400);
+    }
+
     savePackageFile(type as any, fileName, buffer);
 
-    const updated = updatePackage(type as any, decodedName, {
+    const updateMeta: Record<string, unknown> = {
       version,
-      author: author,
-      email: email,
       fileName,
       uploadedAt: new Date().toISOString(),
-    });
+    };
+    if (author) updateMeta.author = author;
+    if (email) updateMeta.email = email;
+
+    const updated = updatePackage(type as any, decodedName, updateMeta);
 
     if (!updated) {
       logger.warn("Update failed: package not found", { type, name: decodedName });
@@ -324,6 +362,34 @@ async function handleUpdatePackage(req: ServerRequest, type: string, name: strin
     return json({ success: true, name: decodedName, version });
   } catch (err: any) {
     logger.error("Update error", { error: err.message });
-    return json({ error: err.message }, 500);
+    return json({ error: "Invalid request: failed to process upload" }, 400);
+  }
+}
+
+// ─── Zip validation ──────────────────────────────────────────────
+
+/** Check if a zip buffer contains a package.json file */
+async function validateZipStructure(buffer: ArrayBuffer): Promise<boolean> {
+  // Write buffer to temp file, use system unzip to list contents
+  const tmpPath = `/tmp/rubickhub-validate-${crypto.randomUUID()}.zip`;
+  await Bun.write(tmpPath, buffer);
+
+  try {
+    const result = await Bun.$`unzip -l ${tmpPath}`.text();
+    // Check if any entry contains "package.json"
+    const lines = result.split("\n");
+    for (const line of lines) {
+      if (line.includes("package.json") && !line.endsWith("/")) {
+        return true;
+      }
+    }
+    return false;
+  } finally {
+    // Clean up temp file
+    try {
+      await Bun.$`rm -f ${tmpPath}`;
+    } catch {
+      // Ignore cleanup errors
+    }
   }
 }

@@ -3,78 +3,160 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>rubickhub - Package Repository</title>
+  <title>rubickhub - 包仓库</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; color: #333; padding: 20px; }
     .container { max-width: 960px; margin: 0 auto; }
     h1 { font-size: 24px; margin-bottom: 20px; }
-    .tabs { display: flex; gap: 8px; margin-bottom: 20px; }
+
+    /* Tabs */
+    .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
     .tab { padding: 8px 16px; border: none; background: #e0e0e0; border-radius: 6px; cursor: pointer; font-size: 14px; }
     .tab.active { background: #1a73e8; color: white; }
-    .sort-controls { display: flex; gap: 8px; margin-bottom: 16px; align-items: center; }
-    .sort-controls select { padding: 6px 12px; border-radius: 6px; border: 1px solid #ccc; }
+
+    /* Toolbar */
+    .toolbar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+    .toolbar input, .toolbar select { padding: 6px 12px; border-radius: 6px; border: 1px solid #ccc; font-size: 13px; }
+    .toolbar input[type="text"] { flex: 1; min-width: 160px; }
+    .toolbar button { padding: 6px 14px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; background: #1a73e8; color: white; }
+    .toolbar button:hover { background: #1557b0; }
+
+    /* Table */
     table { width: 100%; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-    th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid #eee; }
-    th { background: #fafafa; font-weight: 600; font-size: 13px; color: #666; }
+    th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid #eee; font-size: 13px; }
+    th { background: #fafafa; font-weight: 600; color: #666; }
     tr:last-child td { border-bottom: none; }
     tr:hover { background: #f9f9f9; }
-    .download-btn { padding: 4px 12px; background: #1a73e8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; }
-    .download-btn:hover { background: #1557b0; }
-    .empty { text-align: center; padding: 40px; color: #999; }
-    .upload-section { margin-bottom: 24px; padding: 16px; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-    .upload-section h3 { margin-bottom: 12px; font-size: 16px; }
+
+    /* Buttons */
+    .btn { padding: 4px 10px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; color: white; }
+    .btn-download { background: #1a73e8; }
+    .btn-download:hover { background: #1557b0; }
+    .btn-delete { background: #ea4335; }
+    .btn-delete:hover { background: #c5221f; }
+
+    /* Pagination */
+    .pagination { display: flex; gap: 8px; margin-top: 12px; align-items: center; justify-content: center; }
+    .pagination button { padding: 4px 12px; border: 1px solid #ccc; border-radius: 4px; background: white; cursor: pointer; font-size: 13px; }
+    .pagination button:disabled { opacity: 0.4; cursor: default; }
+    .pagination button.active { background: #1a73e8; color: white; border-color: #1a73e8; }
+    .pagination .info { font-size: 12px; color: #666; }
+
+    /* Upload */
+    .upload-section { margin-bottom: 20px; padding: 14px; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .upload-section h3 { margin-bottom: 10px; font-size: 15px; }
     .upload-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-    .upload-form input[type="file"] { flex: 1; }
-    .upload-form input[type="text"] { padding: 6px 12px; border: 1px solid #ccc; border-radius: 6px; width: 160px; }
-    .upload-btn { padding: 6px 16px; background: #34a853; color: white; border: none; border-radius: 6px; cursor: pointer; }
+    .upload-form input[type="file"] { flex: 1; min-width: 180px; font-size: 13px; }
+    .upload-form input[type="text"] { padding: 6px 10px; border: 1px solid #ccc; border-radius: 6px; width: 140px; font-size: 13px; }
+    .upload-form select { padding: 6px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; }
+    .upload-btn { padding: 6px 14px; background: #34a853; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; }
     .upload-btn:hover { background: #2d8f47; }
-    #upload-status { margin-top: 8px; font-size: 13px; }
+    #upload-status { margin-top: 6px; font-size: 13px; }
     .success { color: #34a853; }
     .error { color: #ea4335; }
+
+    .empty { text-align: center; padding: 40px; color: #999; }
+
+    /* Detail Panel */
+    .detail-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); z-index: 100; }
+    .detail-overlay.active { display: block; }
+    .detail-panel { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; border-radius: 10px; padding: 24px; min-width: 420px; max-width: 600px; z-index: 101; box-shadow: 0 4px 20px rgba(0,0,0,0.2); }
+    .detail-panel h2 { font-size: 18px; margin-bottom: 16px; }
+    .detail-panel .close-btn { position: absolute; top: 12px; right: 16px; background: none; border: none; font-size: 20px; cursor: pointer; color: #666; }
+    .detail-panel .close-btn:hover { color: #333; }
+    .detail-row { display: flex; margin-bottom: 10px; font-size: 14px; }
+    .detail-row .label { width: 90px; color: #666; flex-shrink: 0; }
+    .detail-row .value { color: #333; word-break: break-all; }
+    .detail-section { margin-top: 16px; padding-top: 12px; border-top: 1px solid #eee; }
+    .detail-section h3 { font-size: 14px; margin-bottom: 8px; color: #444; }
+    .detail-section ul { list-style: disc; padding-left: 20px; margin: 0; }
+    .detail-section li { font-size: 13px; margin-bottom: 4px; color: #555; }
+    .tag { display: inline-block; padding: 2px 8px; background: #e8f0fe; border-radius: 4px; font-size: 12px; color: #1a73e8; margin-right: 4px; }
+
+    /* Bulk operations */
+    .bulk-bar { display: none; padding: 10px 14px; background: #fff3e0; border-radius: 8px; margin-top: 12px; align-items: center; gap: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .bulk-bar.active { display: flex; }
+    .bulk-bar .count { font-size: 13px; color: #e65100; }
+    .bulk-bar button { padding: 6px 14px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; color: white; }
+    .bulk-bar .bulk-delete { background: #ea4335; }
+    .bulk-bar .bulk-delete:hover { background: #c5221f; }
+    .bulk-bar .bulk-download { background: #1a73e8; }
+    .bulk-bar .bulk-download:hover { background: #1557b0; }
+    .bulk-bar .bulk-cancel { background: #9e9e9e; }
+    .bulk-bar .bulk-cancel:hover { background: #757575; }
+    th.checkbox-col, td.checkbox-col { width: 40px; text-align: center; }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>rubickhub - Package Repository</h1>
+    <h1>rubickhub - 包仓库</h1>
 
+    <!-- Upload -->
     <div class="upload-section">
-      <h3>Upload Package</h3>
+      <h3>上传包</h3>
       <form id="upload-form" class="upload-form">
-        <input type="text" id="upload-author" placeholder="Author name" required>
-        <input type="text" id="upload-email" placeholder="Email">
+        <input type="text" id="upload-author" placeholder="开发者" required>
+        <input type="text" id="upload-email" placeholder="邮箱">
         <input type="file" id="upload-file" accept=".zip" required>
         <select id="upload-type">
           <option value="apps">App</option>
           <option value="skills">Skill</option>
           <option value="mcps">MCP</option>
         </select>
-        <button type="submit" class="upload-btn">Upload</button>
+        <button type="submit" class="upload-btn">上传</button>
       </form>
       <div id="upload-status"></div>
     </div>
 
+    <!-- Tabs -->
     <div class="tabs">
       <button class="tab active" data-type="apps">Apps</button>
       <button class="tab" data-type="skills">Skills</button>
       <button class="tab" data-type="mcps">MCPs</button>
     </div>
 
-    <div class="sort-controls">
-      <label>Sort by:</label>
+    <!-- Toolbar: search + sort -->
+    <div class="toolbar">
+      <input type="text" id="search-input" placeholder="搜索包名或作者...">
       <select id="sort-select">
-        <option value="usageCount">Usage Count</option>
-        <option value="downloads">Downloads</option>
+        <option value="usageCount">按使用量排序</option>
+        <option value="downloads">按下载量排序</option>
       </select>
+      <button id="search-btn">搜索</button>
+      <button id="reset-btn">重置</button>
     </div>
 
+    <!-- Package list -->
     <div id="package-list">
-      <div class="empty">Loading...</div>
+      <div class="empty">加载中...</div>
     </div>
+
+    <!-- Pagination -->
+    <div class="pagination" id="pagination"></div>
+
+    <!-- Bulk operations bar -->
+    <div class="bulk-bar" id="bulk-bar">
+      <span class="count" id="bulk-count">已选 0 项</span>
+      <button class="bulk-download" id="bulk-download">批量下载</button>
+      <button class="bulk-delete" id="bulk-delete">批量删除</button>
+      <button class="bulk-cancel" id="bulk-cancel">取消选择</button>
+    </div>
+  </div>
+
+  <!-- Detail overlay -->
+  <div class="detail-overlay" id="detail-overlay" onclick="closeDetail()"></div>
+  <div class="detail-panel" id="detail-panel" style="display:none;">
+    <button class="close-btn" onclick="closeDetail()">&times;</button>
+    <h2 id="detail-title"></h2>
+    <div id="detail-content"></div>
   </div>
 
   <script>
     let currentType = "apps";
+    let currentPage = 1;
+    let totalPages = 1;
+    let totalItems = 0;
 
     // Tab switching
     document.querySelectorAll(".tab").forEach(tab => {
@@ -82,12 +164,22 @@
         document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
         tab.classList.add("active");
         currentType = tab.dataset.type;
+        currentPage = 1;
         loadPackages();
       });
     });
 
+    // Search
+    document.getElementById("search-btn").addEventListener("click", () => { currentPage = 1; loadPackages(); });
+    document.getElementById("search-input").addEventListener("keydown", (e) => { if (e.key === "Enter") { currentPage = 1; loadPackages(); } });
+    document.getElementById("reset-btn").addEventListener("click", () => {
+      document.getElementById("search-input").value = "";
+      currentPage = 1;
+      loadPackages();
+    });
+
     // Sort change
-    document.getElementById("sort-select").addEventListener("change", loadPackages);
+    document.getElementById("sort-select").addEventListener("change", () => { currentPage = 1; loadPackages(); });
 
     // Upload form
     document.getElementById("upload-form").addEventListener("submit", async (e) => {
@@ -103,52 +195,289 @@
         const res = await fetch(`/api/${type}/upload`, { method: "POST", body: formData });
         const data = await res.json();
         if (res.ok) {
-          status.innerHTML = `<span class="success">Uploaded: ${data.name} v${data.version}</span>`;
+          status.innerHTML = `<span class="success">上传成功: ${data.name} v${data.version}</span>`;
+          document.getElementById("upload-file").value = "";
           loadPackages();
         } else {
-          status.innerHTML = `<span class="error">Error: ${data.error}</span>`;
+          status.innerHTML = `<span class="error">错误: ${data.error}</span>`;
         }
       } catch (err) {
-        status.innerHTML = `<span class="error">Upload failed</span>`;
+        status.innerHTML = `<span class="error">上传失败</span>`;
       }
     });
 
     async function loadPackages() {
       const sort = document.getElementById("sort-select").value;
-      const res = await fetch(`/api/${currentType}?sort=${sort}`);
-      const packages = await res.json();
+      const q = document.getElementById("search-input").value.trim();
+      const url = `/api/${currentType}?sort=${sort}&page=${currentPage}&pageSize=10${q ? "&q=" + encodeURIComponent(q) : ""}`;
+
+      const res = await fetch(url);
+      const data = await res.json();
       const list = document.getElementById("package-list");
+      const packages = data.items || [];
 
       if (packages.length === 0) {
-        list.innerHTML = '<div class="empty">No packages yet</div>';
+        list.innerHTML = '<div class="empty">暂无数据</div>';
+        document.getElementById("pagination").innerHTML = "";
         return;
       }
 
       list.innerHTML = `
-        <table>
+        <table id="package-table">
           <thead>
-            <tr><th>Name</th><th>Version</th><th>Author</th><th>Downloads</th><th>Usage</th><th>Uploaded</th><th></th></tr>
+            <tr><th class="checkbox-col"><input type="checkbox" id="select-all"></th><th>名称</th><th>版本</th><th>作者</th><th>下载量</th><th>使用量</th><th>上传时间</th><th>操作</th></tr>
           </thead>
           <tbody>
             ${packages.map(p => `
               <tr>
-                <td>${p.name}</td>
-                <td>${p.version}</td>
-                <td>${p.author}</td>
+                <td class="checkbox-col"><input type="checkbox" class="pkg-checkbox" data-name="${escapeHtml(p.name)}" data-filename="${escapeHtml(p.fileName)}"></td>
+                <td><a href="javascript:void(0)" class="pkg-name-link" data-name="${escapeHtml(p.name)}" style="color:#1a73e8;text-decoration:none;cursor:pointer;">${escapeHtml(p.name)}</a></td>
+                <td>${escapeHtml(p.version)}</td>
+                <td>${escapeHtml(p.author)}</td>
                 <td>${p.downloads}</td>
                 <td>${p.usageCount}</td>
                 <td>${new Date(p.uploadedAt).toLocaleDateString()}</td>
-                <td><button class="download-btn" onclick="downloadPackage('${p.fileName}')">Download</button></td>
+                <td>
+                  <button class="btn btn-download" data-filename="${escapeHtml(p.fileName)}">下载</button>
+                  <button class="btn btn-delete" data-pkg-name="${escapeHtml(p.name)}">删除</button>
+                </td>
               </tr>
             `).join("")}
           </tbody>
         </table>
       `;
+
+      // Bind select-all checkbox
+      const selectAll = document.getElementById("select-all");
+      selectAll.addEventListener("change", () => {
+        document.querySelectorAll(".pkg-checkbox").forEach(cb => {
+          cb.checked = selectAll.checked;
+        });
+        updateBulkBar();
+      });
+
+      // Listen for individual checkbox changes
+      document.querySelectorAll(".pkg-checkbox").forEach(cb => {
+        cb.addEventListener("change", updateBulkBar);
+      });
+
+      // Pagination
+      totalPages = data.pagination?.totalPages || 1;
+      totalItems = data.pagination?.total || 0;
+      renderPagination();
+    }
+
+    function renderPagination() {
+      const container = document.getElementById("pagination");
+      if (totalPages <= 1) { container.innerHTML = ""; return; }
+
+      let html = `<button onclick="goToPage(1)" ${currentPage === 1 ? "disabled" : ""}>首页</button>`;
+      html += `<button onclick="goToPage(${currentPage - 1})" ${currentPage === 1 ? "disabled" : ""}>&laquo;</button>`;
+
+      for (let i = 1; i <= totalPages; i++) {
+        if (totalPages > 7 && Math.abs(i - currentPage) > 2 && i !== 1 && i !== totalPages) {
+          if (i === currentPage - 3 || i === currentPage + 3) html += `<span class="info">...</span>`;
+          continue;
+        }
+        html += `<button class="${i === currentPage ? 'active' : ''}" onclick="goToPage(${i})">${i}</button>`;
+      }
+
+      html += `<button onclick="goToPage(${currentPage + 1})" ${currentPage === totalPages ? "disabled" : ""}>&raquo;</button>`;
+      html += `<button onclick="goToPage(${totalPages})" ${currentPage === totalPages ? "disabled" : ""}>末页</button>`;
+      html += `<span class="info">第 ${currentPage}/${totalPages} 页，共 ${totalItems} 条</span>`;
+      container.innerHTML = html;
+    }
+
+    function goToPage(page) {
+      if (page < 1 || page > totalPages) return;
+      currentPage = page;
+      loadPackages();
     }
 
     function downloadPackage(fileName) {
       window.location.href = `/api/${currentType}/download/${fileName}`;
     }
+
+    async function deletePackage(name) {
+      if (!confirm(`确认删除 "${name}"？此操作不可恢复。`)) return;
+
+      try {
+        const res = await fetch(`/api/${currentType}/${encodeURIComponent(name)}`, { method: "DELETE" });
+        const data = await res.json();
+        if (res.ok) {
+          loadPackages();
+        } else {
+          showInlineError("删除失败: " + data.error);
+        }
+      } catch (err) {
+        showInlineError("删除失败，请重试");
+      }
+    }
+
+    // ─── Event delegation for package table ──────────────────
+
+    document.getElementById("package-list").addEventListener("click", (e) => {
+      const target = e.target;
+
+      // Package name link
+      const nameLink = target.closest(".pkg-name-link");
+      if (nameLink) {
+        e.preventDefault();
+        showPackageDetail(nameLink.dataset.name);
+        return;
+      }
+
+      // Download button
+      const downloadBtn = target.closest(".btn-download");
+      if (downloadBtn && downloadBtn.dataset.filename) {
+        downloadPackage(downloadBtn.dataset.filename);
+        return;
+      }
+
+      // Delete button
+      const deleteBtn = target.closest(".btn-delete");
+      if (deleteBtn && deleteBtn.dataset.pkgName) {
+        deletePackage(deleteBtn.dataset.pkgName);
+        return;
+      }
+    });
+
+    // ─── Detail panel ──────────────────────────────────────
+
+    async function showPackageDetail(name) {
+      // Fetch full package info from API
+      const res = await fetch(`/api/${currentType}?q=${encodeURIComponent(name)}&pageSize=100`);
+      const data = await res.json();
+      const pkg = (data.items || []).find(p => p.name === name);
+      if (!pkg) {
+        showInlineError("获取包详情失败");
+        return;
+      }
+
+      document.getElementById("detail-title").textContent = pkg.name;
+      document.getElementById("detail-content").innerHTML = `
+        <div class="detail-row"><span class="label">版本</span><span class="value">${escapeHtml(pkg.version)}</span></div>
+        <div class="detail-row"><span class="label">作者</span><span class="value">${escapeHtml(pkg.author)}${pkg.email ? " (" + escapeHtml(pkg.email) + ")" : ""}</span></div>
+        <div class="detail-row"><span class="label">文件名</span><span class="value">${escapeHtml(pkg.fileName)}</span></div>
+        <div class="detail-row"><span class="label">上传时间</span><span class="value">${new Date(pkg.uploadedAt).toLocaleString()}</span></div>
+        <div class="detail-row"><span class="label">下载量</span><span class="value">${pkg.downloads}</span></div>
+        <div class="detail-row"><span class="label">使用量</span><span class="value">${pkg.usageCount}</span></div>
+        <div class="detail-section">
+          <h3>快速操作</h3>
+          <button class="btn btn-download" id="detail-download" data-filename="${escapeHtml(pkg.fileName)}">下载</button>
+          <button class="btn btn-delete" id="detail-delete" data-pkg-name="${escapeHtml(pkg.name)}">删除</button>
+        </div>
+      `;
+
+      // Bind detail panel button events
+      const dlBtn = document.getElementById("detail-download");
+      if (dlBtn) dlBtn.addEventListener("click", () => { downloadPackage(dlBtn.dataset.filename); closeDetail(); });
+      const delBtn = document.getElementById("detail-delete");
+      if (delBtn) delBtn.addEventListener("click", () => { deletePackage(delBtn.dataset.pkgName); closeDetail(); });
+
+      document.getElementById("detail-panel").style.display = "block";
+      document.getElementById("detail-overlay").classList.add("active");
+    }
+
+    function closeDetail() {
+      document.getElementById("detail-panel").style.display = "none";
+      document.getElementById("detail-overlay").classList.remove("active");
+    }
+
+    // Close on Escape key
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closeDetail();
+    });
+
+    // ─── Inline error display ──────────────────────────────
+
+    // Reuse upload status element for global inline errors
+    function showInlineError(message) {
+      const status = document.getElementById("upload-status");
+      status.innerHTML = `<span class="error">${escapeHtml(message)}</span>`;
+      // Auto-clear after 5 seconds
+      setTimeout(() => {
+        if (status.querySelector(".error")) {
+          status.innerHTML = "";
+        }
+      }, 5000);
+    }
+
+    function escapeHtml(str) {
+      if (!str) return "";
+      return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+
+    // ─── Bulk operations ─────────────────────────────────────
+
+    function getSelectedPackages() {
+      const selected = [];
+      document.querySelectorAll(".pkg-checkbox:checked").forEach(cb => {
+        selected.push({ name: cb.dataset.name, fileName: cb.dataset.fileName });
+      });
+      return selected;
+    }
+
+    function updateBulkBar() {
+      const selected = getSelectedPackages();
+      const bar = document.getElementById("bulk-bar");
+      const countEl = document.getElementById("bulk-count");
+      if (selected.length > 0) {
+        countEl.textContent = `已选 ${selected.length} 项`;
+        bar.classList.add("active");
+      } else {
+        bar.classList.remove("active");
+      }
+    }
+
+    // Bulk delete
+    document.getElementById("bulk-delete").addEventListener("click", async () => {
+      const selected = getSelectedPackages();
+      if (selected.length === 0) return;
+      if (!confirm(`确定要删除选中的 ${selected.length} 个包吗？此操作不可恢复。`)) return;
+
+      let successCount = 0;
+      let failCount = 0;
+      for (const pkg of selected) {
+        try {
+          const res = await fetch(`/api/${currentType}/${encodeURIComponent(pkg.name)}`, { method: "DELETE" });
+          if (res.ok) successCount++;
+          else failCount++;
+        } catch {
+          failCount++;
+        }
+      }
+
+      if (failCount > 0) {
+        showInlineError(`批量删除完成：成功 ${successCount}，失败 ${failCount}`);
+      } else {
+        document.getElementById("upload-status").innerHTML = `<span class="success">批量删除成功：${successCount} 个包</span>`;
+      }
+
+      // Reset and reload
+      document.getElementById("bulk-bar").classList.remove("active");
+      loadPackages();
+    });
+
+    // Bulk download
+    document.getElementById("bulk-download").addEventListener("click", () => {
+      const selected = getSelectedPackages();
+      if (selected.length === 0) return;
+      // Trigger downloads with small delay to avoid browser blocking
+      selected.forEach((pkg, i) => {
+        setTimeout(() => {
+          window.location.href = `/api/${currentType}/download/${pkg.fileName}`;
+        }, i * 300);
+      });
+    });
+
+    // Cancel selection
+    document.getElementById("bulk-cancel").addEventListener("click", () => {
+      document.querySelectorAll(".pkg-checkbox").forEach(cb => { cb.checked = false; });
+      const selectAll = document.getElementById("select-all");
+      if (selectAll) selectAll.checked = false;
+      document.getElementById("bulk-bar").classList.remove("active");
+    });
 
     loadPackages();
   </script>

@@ -2,11 +2,17 @@ import { readFileSync, existsSync } from "fs";
 
 export type ServerRequest = Request;
 
-/** Return JSON response */
+const CORS_HEADERS: Record<string, string> = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS, DELETE, PUT",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
+/** Return JSON response with CORS */
 export function json(data: any, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...CORS_HEADERS },
   });
 }
 
@@ -18,16 +24,16 @@ export function text(data: string, status = 200): Response {
   });
 }
 
-/** Return file response, 404 if not found */
+/** Return file response, 404 if not found, with CORS */
 export function file(filePath: string): Response {
   if (!existsSync(filePath)) {
-    return new Response("Not found", { status: 404 });
+    return new Response("Not found", { status: 404, headers: CORS_HEADERS });
   }
 
   const buffer = readFileSync(filePath);
   const contentType = getContentType(filePath);
   return new Response(buffer, {
-    headers: { "Content-Type": contentType },
+    headers: { "Content-Type": contentType, ...CORS_HEADERS },
   });
 }
 

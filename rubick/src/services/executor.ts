@@ -105,6 +105,20 @@ function runQodercli(
 
     let stdout = "";
     let stderr = "";
+    let settled = false;
+
+    // 超时保护：5 分钟
+    const timeout = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        child.kill("SIGKILL");
+        resolve({
+          success: false,
+          output: stdout || stderr,
+          error: "qodercli execution timed out after 5 minutes",
+        });
+      }
+    }, 5 * 60 * 1000);
 
     child.stdout.on("data", (data) => {
       const chunk = data.toString();
@@ -113,21 +127,27 @@ function runQodercli(
     });
 
     child.stderr.on("data", (data) => {
-      const chunk = data.toString();
-      stderr += chunk;
-      onOutput?.(chunk);
+      stderr += data.toString();
     });
 
     child.on("close", (code) => {
-      resolve({
-        success: code === 0,
-        output: stdout,
-        error: code !== 0 ? stderr : undefined,
-      });
+      if (!settled) {
+        settled = true;
+        clearTimeout(timeout);
+        resolve({
+          success: code === 0,
+          output: stdout || stderr,
+          error: code !== 0 ? stderr : undefined,
+        });
+      }
     });
 
     child.on("error", (err) => {
-      reject(err);
+      if (!settled) {
+        settled = true;
+        clearTimeout(timeout);
+        reject(err);
+      }
     });
   });
 }
