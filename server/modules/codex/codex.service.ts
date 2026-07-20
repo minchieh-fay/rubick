@@ -9,7 +9,7 @@ export type CodexLogWriter = (level: 'stdout' | 'stderr' | 'error', content: str
 export async function runCodex(input: string, writeLog?: CodexLogWriter, cwd = config.codexCwd) {
   const args = [
     'exec', '--ephemeral', '--skip-git-repo-check',
-    '--sandbox', 'workspace-write', '--color', 'never',
+    '--yolo', '--color', 'never',
     ...config.codexArgs, input,
   ];
   const process = Bun.spawn([config.codexBin, ...args], { stdout: 'pipe', stderr: 'pipe', cwd });

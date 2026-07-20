@@ -1,0 +1,158 @@
+
+
+The Agents SDK can deliver output from the model and other execution steps incrementally. Streaming keeps your UI responsive and avoids waiting for the entire final result before updating the user.
+
+## Enabling streaming
+
+Pass a `{ stream: true }` option to `Runner.run()` to obtain a streaming object rather than a full result:
+
+
+
+When streaming is enabled the returned `stream` implements the `AsyncIterable` interface. Each yielded event is an object describing what happened within the run. The stream yields one of three event types, each describing a different part of the agent's execution. Most applications only want the model's text though, so the stream provides helpers.
+
+### Get the text output
+
+Call `stream.toTextStream()` to obtain a stream of the emitted text. When `compatibleWithNodeStreams` is `true` the return value is a regular Node.js `Readable`. We can pipe it directly into `process.stdout` or another destination.
+
+
+
+The promise `stream.completed` resolves once the run and all pending callbacks are completed. Always await it if you want to ensure there is no more output. This includes post-processing work such as session persistence or history compaction hooks that finish after the last text token arrives.
+
+`toTextStream()` only emits assistant text. Tool calls, handoffs, approvals, and other runtime events are available from the full event stream.
+
+### Listen to all events
+
+You can use a `for await` loop to inspect each event as it arrives. Useful information includes low level model events, any agent switches and SDK specific run information:
+
+
+
+See [the streamed example](https://github.com/openai/openai-agents-js/tree/main/examples/agent-patterns/streamed.ts) for a fully worked script that prints both the plain text stream and the raw event stream.
+
+### Responses WebSocket transport (optional)
+
+The streaming APIs on this page also work with the OpenAI Responses WebSocket transport.
+
+Enable it globally with `setOpenAIResponsesTransport('websocket')`, or use your own `OpenAIProvider` with `useResponsesWebSocket: true`.
+
+You do not need `withResponsesWebSocketSession(...)` or a custom `OpenAIProvider` just to stream over WebSocket. If reconnecting between runs is acceptable, `run()` / `Runner.run(..., { stream: true })` still works after enabling the transport.
+
+Use `withResponsesWebSocketSession(...)` or a custom `OpenAIProvider` / `Runner` when you want connection reuse and more explicit provider lifecycle control.
+
+Continuation with `previousResponseId` uses the same semantics as the HTTP transport. The difference is just the transport and connection lifecycle.
+
+If you build the provider yourself, remember to call `await provider.close()` when shutting down. Websocket-backed model wrappers are cached for reuse by default, and closing the provider releases those connections. `withResponsesWebSocketSession(...)` gives you the same reuse but scopes cleanup to a single callback automatically.
+
+See [`examples/basic/stream-ws.ts`](https://github.com/openai/openai-agents-js/tree/main/examples/basic/stream-ws.ts) for a complete example with streaming, tool calls, approvals, and `previousResponseId`.
+
+## Event types
+
+The stream yields three different event types:
+
+### raw_model_stream_event
+
+
+
+Example:
+
+```json
+{
+  "type": "raw_model_stream_event",
+  "data": {
+    "type": "output_text_delta",
+    "delta": "Hello"
+  }
+}
+```
+
+If you are using the OpenAI provider, `@openai/agents-openai` and `@openai/agents` both export helpers that narrow raw OpenAI payloads without changing the generic `RunRawModelStreamEvent` contract in `agents-core`.
+
+
+
+When you only need transport-agnostic streaming code, checking `event.type === 'raw_model_stream_event'` is still enough.
+
+If you are using OpenAI models and want to inspect provider-specific payloads without manual casts, the SDK also exports narrowing helpers:
+
+- `isOpenAIResponsesRawModelStreamEvent(event)` for Responses raw events.
+- `isOpenAIChatCompletionsRawModelStreamEvent(event)` for Chat Completions chunks.
+
+For these OpenAI model events, `RunRawModelStreamEvent.source` is also populated with either `'openai-responses'` or `'openai-chat-completions'`.
+
+This is especially useful when you want to inspect Responses-only events such as `response.reasoning_summary_text.delta`, `response.output_item.done`, or MCP argument deltas while keeping TypeScript aware of the underlying event shape.
+
+See [`examples/basic/stream-ws.ts`](https://github.com/openai/openai-agents-js/tree/main/examples/basic/stream-ws.ts), [`examples/tools/code-interpreter.ts`](https://github.com/openai/openai-agents-js/tree/main/examples/tools/code-interpreter.ts), and [`examples/connectors/index.ts`](https://github.com/openai/openai-agents-js/tree/main/examples/connectors) for fuller OpenAI-specific streaming patterns.
+
+### run_item_stream_event
+
+
+
+`name` identifies which kind of item was produced:
+
+| `name` | Meaning |
+| --- | --- |
+| `message_output_created` | A message output item was created. |
+| `handoff_requested` | The model requested a handoff. |
+| `handoff_occurred` | The runtime completed a handoff to another agent. |
+| `tool_search_called` | A `tool_search_call` item was emitted. |
+| `tool_search_output_created` | A `tool_search_output` item with loaded tool definitions was emitted. |
+| `tool_called` | A tool call item was emitted. |
+| `tool_output` | A tool result item was emitted. |
+| `reasoning_item_created` | A reasoning item was emitted. |
+| `tool_approval_requested` | A tool call paused for human approval. |
+
+The `tool_search_*` events only appear on Responses runs that use `toolSearchTool()` to load deferred tools during the run.
+
+Example handoff payload:
+
+```json
+{
+  "type": "run_item_stream_event",
+  "name": "handoff_occurred",
+  "item": {
+    "type": "handoff_call",
+    "id": "h1",
+    "status": "completed",
+    "name": "transfer_to_refund_agent"
+  }
+}
+```
+
+### agent_updated_stream_event
+
+
+
+Example:
+
+```json
+{
+  "type": "agent_updated_stream_event",
+  "agent": {
+    "name": "Refund Agent"
+  }
+}
+```
+
+## Human in the loop while streaming
+
+Streaming is compatible with handoffs that pause execution (for example when a tool requires approval). The `interruptions` field on the stream object exposes the pending approvals, and you can continue execution by calling `state.approve()` or `state.reject()` for each of them. After the stream pauses, `stream.completed` resolves and `stream.interruptions` contains the approvals to handle. Executing again with `{ stream: true }` resumes streaming output.
+
+
+
+A fuller example that interacts with the user is [`human-in-the-loop-stream.ts`](https://github.com/openai/openai-agents-js/tree/main/examples/agent-patterns/human-in-the-loop-stream.ts).
+
+## Stop a stream and continue the same turn
+
+To stop a streaming run early, abort the `signal` you passed to `run()` or cancel a reader created from `stream.toStream()`. Either way, still await `stream.completed` before treating the run as settled. The SDK may still be persisting the current turn input or finishing other cleanup after your code stops consuming events.
+
+When a stream is cancelled, `stream.cancelled` becomes `true`, and `stream.finalOutput` often remains `undefined` because the current turn never finished. If you want to continue that unfinished turn later, rerun the same agent with `stream.state` instead of appending a fresh user message. That keeps turn counting correct and reuses any `conversationId` or `previousResponseId` already stored in the `RunState`.
+
+If you are also using session persistence, pass the same `session` again on the resumed `run()` call so the conversation keeps writing to the same backing store.
+
+Approval pauses follow the same rule: resolve `stream.interruptions`, then resume from `stream.state` rather than starting a new turn.
+
+## Tips
+
+- Remember to wait for `stream.completed` before exiting to ensure all output has been flushed.
+- The initial `{ stream: true }` option only applies to the call where it is provided. If you re-run with a `RunState` you must specify the option again.
+- If your application only cares about the textual result prefer `toTextStream()` to avoid dealing with individual event objects.
+
+With streaming and the event system you can integrate an agent into a chat interface, terminal application or any place where users benefit from incremental updates.

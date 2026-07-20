@@ -71,6 +71,7 @@ coverage/
 *.swo
 *~
 test-environments/*.zip
+tmp
 
 # Runtime directories
 .run/

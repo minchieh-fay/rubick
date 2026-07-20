@@ -3,10 +3,10 @@ import { basename, resolve } from 'node:path';
 import { db } from '../../database/database';
 import { config } from '../../config/env';
 
-const environmentsRoot = resolve(config.dataDir, 'environments');
+const environmentsRoot = resolve(config.dataDir, 'agent-environments');
 mkdirSync(environmentsRoot, { recursive: true });
 const now = () => new Date().toISOString();
-const tempRoot = resolve(config.dataDir, 'tmp-environments');
+const tempRoot = resolve(environmentsRoot, '.tmp');
 mkdirSync(tempRoot, { recursive: true });
 
 export function listEnvironments(options: { search?: string; page?: number; pageSize?: number } = {}) {

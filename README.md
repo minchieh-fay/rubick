@@ -104,7 +104,7 @@ math-agent.zip
 上传后平台会安装到：
 
 ```text
-data/environments/<environment-id>/
+data/agent-environments/<environment-id>/
 ```
 
 上传文件名会作为默认环境名称，例如 `数学老师.zip` 会显示为“数学老师”。环境可以被多个组织树节点重复挂载；节点上的附加提示词只影响该挂载点，不会修改共享环境。
@@ -185,12 +185,27 @@ server/
 ```text
 data/
 ├── rubick.sqlite
-├── environments/
-├── tmp-environments/
-└── ...
+├── agent-environments/       # 全局 Agent 模板和环境资产
+└── sessions/                 # 每次用户会话的工作区
 ```
 
-数据库记录 Session、消息、Agent 节点、环境资产、运行日志和使用流水；环境文件和运行产物保存在文件系统中。
+数据库记录 Session、消息、Agent 节点、环境资产、运行日志和使用流水；全局 Agent 模板保存在 `data/agent-environments/`，Session 文件和运行产物保存在 `data/sessions/`。
+
+每个 Session 也会在 `data/sessions/` 下创建独立的文件系统工作区。SQLite 保存结构化索引和对话记录，Session 目录保存用户输入、Agent 共享数据和可交付产物：
+
+```text
+data/sessions/<session-id>/
+├── agent-<node-id>/       # 本次会话中 Agent 的工作目录，链接到共享环境
+│   ├── AGENTS.md
+│   ├── .agents/
+│   ├── scripts/
+│   └── data -> ../data     # 所有参与本次会话的 Agent 共享这里
+└── data/
+    ├── input/              # 用户原始需求和上传文件
+    └── output/             # Agent 生成的可交付文件
+```
+
+Session 文件接口为 `GET /api/sessions/:id/input`、`POST /api/sessions/:id/input` 和 `GET /api/sessions/:id/output`；目录中的具体文件可通过返回的 URL 访问。
 
 ## 测试环境
 

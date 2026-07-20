@@ -1,0 +1,4 @@
+interface:
+  display_name: "OpenAI Agents SDK"
+  short_description: "Build TypeScript agents with the OpenAI SDK"
+  default_prompt: "Use $openai-agents-sdk to build or modify a TypeScript application with the OpenAI Agents SDK."

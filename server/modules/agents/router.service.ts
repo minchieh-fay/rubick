@@ -3,11 +3,15 @@ import { getEnvironmentPath } from '../environments/environment.service';
 
 type NodeRow = { id: string; parent_id: string | null; name: string; role: string; environment_id: string | null; environment_name: string | null; prompt_text: string };
 
-const routeRules = [
-  { pattern: /手机|苹果|iphone|安卓|华为|小米|人脸|解锁/i, env: '手机专家' },
-  { pattern: /数学|计算|加法|减法|乘法|除法|等于|\d+\s*[+\-*/]\s*\d+/i, env: '数学老师' },
-  { pattern: /历史|朝代|战争|皇帝|历史人物/i, env: '历史老师' },
-];
+function matchesNodeName(input: string, name: string) {
+  const normalizedInput = input.toLocaleLowerCase();
+  const normalizedName = name.trim().toLocaleLowerCase();
+  if (!normalizedName) return false;
+  if (/^[a-z0-9_-]+$/i.test(normalizedName)) {
+    return new RegExp(`(^|[^a-z0-9_-])${normalizedName.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}($|[^a-z0-9_-])`, 'i').test(input);
+  }
+  return normalizedInput.includes(normalizedName);
+}
 
 function nodes() {
   return db.query('SELECT n.id,n.parent_id,n.name,n.role,n.environment_id,n.prompt_text,e.name as environment_name FROM agent_nodes n LEFT JOIN agent_environments e ON e.id=n.environment_id').all() as NodeRow[];
@@ -15,10 +19,32 @@ function nodes() {
 
 export function routeInput(input: string) {
   const all = nodes();
-  const rule = routeRules.find((item) => item.pattern.test(input));
-  if (!rule) return null;
-  const leaf = all.find((item) => item.environment_name === rule.env || item.name === rule.env);
-  if (!leaf) return { targetName: rule.env, path: [], steps: [], cwd: null, missing: true };
+  const mountedLeaves = all.filter((item) => item.environment_id && item.environment_name);
+  const namedLeaf = mountedLeaves
+    .filter((item) => matchesNodeName(input, item.environment_name!) || matchesNodeName(input, item.name))
+    .sort((left, right) => (right.environment_name?.length ?? 0) - (left.environment_name?.length ?? 0))[0];
+  return namedLeaf ? buildRoute(all, namedLeaf) : null;
+}
+
+export function routeNode(nodeId: string | null | undefined) {
+  if (!nodeId) return null;
+  const all = nodes();
+  const target = all.find((item) => item.id === nodeId && item.environment_id);
+  return target ? buildRoute(all, target) : null;
+}
+
+export function getRoutingContext() {
+  return nodes().map((item) => ({
+    id: item.id,
+    parentId: item.parent_id,
+    name: item.name,
+    role: item.role,
+    environmentName: item.environment_name,
+    executable: Boolean(item.environment_id),
+  }));
+}
+
+function buildRoute(all: NodeRow[], leaf: NodeRow) {
   const byId = new Map(all.map((item) => [item.id, item]));
   const path: string[] = [];
   const chain: NodeRow[] = [];
