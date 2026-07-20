@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+node_modules.incomplete/
 .pnp
 .pnp.js
 
@@ -69,7 +70,9 @@ coverage/
 *.swp
 *.swo
 *~
+test-environments/*.zip
 
 # Runtime directories
 .run/
 last.json
+data/

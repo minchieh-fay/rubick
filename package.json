@@ -1,0 +1,26 @@
+{
+  "name": "rubick",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run build && bun run server/index.ts",
+    "build": "bun build src/main.tsx --outdir dist --target browser",
+    "typecheck": "bun x tsc --noEmit",
+    "start": "NODE_ENV=production bun run server/index.ts"
+  },
+  "dependencies": {
+    "@openai/agents": "0.13.5",
+    "@openai/agents-core": "0.13.5",
+    "@openai/agents-openai": "0.13.5",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "scheduler": "0.23.2",
+    "zod": "4.0.17"
+  },
+  "devDependencies": {
+    "@types/bun": "1.2.20",
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "typescript": "5.7.2"
+  }
+}
