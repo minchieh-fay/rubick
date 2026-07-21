@@ -56,7 +56,7 @@ async function executeRun(runId: string, sessionId: string, input: string, targe
       if (node.environmentId) recordUsage(sessionId, runId, node.id, node.environmentId);
       const candidates = getChildAgents(node.id);
       const coordinationInstruction = candidates.length > 0
-        ? '你是一个有可执行下级的协调节点。请分析并组织下级处理，不要仅因自己能给出一个答案就替代下级完成；输出应明确说明是否需要把任务交给某个下级。'
+        ? '平台总规则：如果任意直接下级 Agent 比你更适合处理用户任务，你必须把任务交给该下级，不能自行结束或替代下级作答。你是一个有可执行下级的协调节点，请分析并组织下级处理，输出应明确说明是否需要把任务交给某个下级。'
         : '你是当前分支的执行节点，请完成分配给你的实际任务并给出最终结果。';
       const prompt = `${currentPrompt}\n\n你是组织树中的 ${node.name}（${node.role}）。${coordinationInstruction}\n请严格按照当前工作目录中的 AGENTS.md 执行。本次 Session 的共享数据目录是当前工作目录下的 data/；用户输入位于 data/input/，所有需要让用户访问的最终文件必须写入 data/output/。完成本轮工作后，请在输出中明确说明结果，以及是否需要下级 Agent 继续处理。`;
       const promptWithOverride = node.prompt ? `${prompt}\n\n节点附加提示词：\n${node.prompt}` : prompt;
