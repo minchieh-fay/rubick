@@ -2,6 +2,17 @@ import { db } from '../../database/database';
 import { getEnvironmentPath } from '../environments/environment.service';
 
 type NodeRow = { id: string; parent_id: string | null; name: string; role: string; environment_id: string | null; environment_name: string | null; prompt_text: string };
+export type AgentNode = {
+  id: string;
+  parentId: string | null;
+  name: string;
+  role: string;
+  environmentId: string | null;
+  environmentName: string | null;
+  prompt: string;
+};
+
+export type AgentStep = AgentNode & { cwd: string | null };
 
 function matchesNodeName(input: string, name: string) {
   const normalizedInput = input.toLocaleLowerCase();
@@ -15,6 +26,20 @@ function matchesNodeName(input: string, name: string) {
 
 function nodes() {
   return db.query('SELECT n.id,n.parent_id,n.name,n.role,n.environment_id,n.prompt_text,e.name as environment_name FROM agent_nodes n LEFT JOIN agent_environments e ON e.id=n.environment_id').all() as NodeRow[];
+}
+
+function toAgentNode(row: NodeRow): AgentNode {
+  return { id: row.id, parentId: row.parent_id, name: row.name, role: row.role, environmentId: row.environment_id, environmentName: row.environment_name, prompt: row.prompt_text };
+}
+
+export function getAgentNode(nodeId: string | null | undefined) {
+  if (!nodeId) return null;
+  const row = nodes().find((item) => item.id === nodeId && item.environment_id);
+  return row ? toAgentNode(row) : null;
+}
+
+export function getChildAgents(parentId: string) {
+  return nodes().filter((item) => item.parent_id === parentId && item.environment_id && item.environment_name).map(toAgentNode);
 }
 
 export function routeInput(input: string) {
@@ -31,6 +56,19 @@ export function routeNode(nodeId: string | null | undefined) {
   const all = nodes();
   const target = all.find((item) => item.id === nodeId && item.environment_id);
   return target ? buildRoute(all, target) : null;
+}
+
+export function getPathNodeIds(nodeId: string | null | undefined) {
+  if (!nodeId) return [];
+  const all = nodes();
+  const byId = new Map(all.map((item) => [item.id, item]));
+  const path: string[] = [];
+  let current = byId.get(nodeId);
+  while (current) {
+    path.unshift(current.id);
+    current = current.parent_id ? byId.get(current.parent_id) : undefined;
+  }
+  return path;
 }
 
 export function getRoutingContext() {

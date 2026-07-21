@@ -41,8 +41,11 @@ function OrganizationPanel({ nodes, environments, root, node, setNode, refresh }
 
 function TracePanel({ run, logs, open, onClose }: { run: Run | undefined; logs: RunLog[]; open: boolean; onClose: () => void }) {
   if (!open) return null;
+  const actualChainLog = [...logs].reverse().find((log) => log.source === 'router' && log.content.includes('实际调用链：'));
   const routeLog = [...logs].reverse().find((log) => log.source === 'router' && log.content.includes('路由链：') && !log.content.includes('名称预匹配路由链：'));
-  const routePath = routeLog?.content.match(/路由链：(.+)/)?.[1]?.trim().split(' -> ').filter(Boolean) ?? [];
+  const routePath = actualChainLog?.content.match(/实际调用链：(.+)/)?.[1]?.trim().split(' -> ').filter(Boolean)
+    ?? routeLog?.content.match(/路由链：(.+)/)?.[1]?.trim().split(' -> ').filter(Boolean)
+    ?? [];
   const agentNames = (routePath.length > 0 ? routePath : ['总协调 Agent', ...logs.filter((log) => log.source.startsWith('codex:')).map((log) => log.source.slice(6)), ...(run?.currentAgent && run.currentAgent !== '总协调 Agent' ? [run.currentAgent] : [])]).filter((name, index, items) => items.indexOf(name) === index);
   const currentAgent = run?.currentAgent ?? '总协调 Agent';
   const statusLabel = run?.status === 'running' ? '执行中' : run?.status === 'failed' ? '失败' : '已完成';

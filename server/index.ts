@@ -2,10 +2,10 @@ import { rmSync } from 'node:fs';
 import { config } from './config/env';
 import './database/database';
 import { getTree, createNode, updateNode, deleteNode } from './modules/agents/agent.service';
-import { getRoutingContext, routeInput, routeNode } from './modules/agents/router.service';
+import { getAgentNode, getChildAgents, getPathNodeIds, getRoutingContext, routeInput, routeNode } from './modules/agents/router.service';
 import { recordUsage } from './modules/agents/usage.service';
 import { isAvailable as isCodexAvailable, runCodex } from './modules/codex/codex.service';
-import { isConfigured as isLlmConfigured, runOrchestrator } from './modules/llm/llm.service';
+import { decideNextAgent, isConfigured as isLlmConfigured, runOrchestrator } from './modules/llm/llm.service';
 import { createSession, createTurn, finishRun, getHistory, getSession, listSessions, setRunCurrent } from './modules/sessions/session.service';
 import { createArchive, deleteEnvironment, importArchive, importDirectory, listEnvironments } from './modules/environments/environment.service';
 import { appendLog, getLogs } from './modules/runs/run-log.service';
@@ -21,46 +21,65 @@ async function executeRun(runId: string, sessionId: string, input: string, targe
     setRunCurrent(runId, '总协调 Agent');
     appendLog(runId, 'orchestrator', 'info', `收到用户请求：\n${input}`);
     const namedRoute = routeInput(input);
-    let route = targetNodeId ? routeNode(targetNodeId) : null;
-    if (targetNodeId && !route) throw new Error('指定的 Agent 不存在或没有可执行环境');
+    const explicitPath = targetNodeId ? getPathNodeIds(targetNodeId) : [];
+    const rootIndex = explicitPath.indexOf('root-orchestrator');
+    const explicitFirstNodeId = rootIndex >= 0 ? explicitPath[rootIndex + 1] : undefined;
+    if (targetNodeId && (!routeNode(targetNodeId) || !explicitFirstNodeId)) throw new Error('指定的 Agent 不存在或没有可执行环境');
     const history = getHistory(sessionId).map((item) => `${item.role}: ${item.content}`).join('\n');
-    const routeHint = namedRoute ? `名称预匹配目标：${namedRoute.targetName}\n名称预匹配路由链：${namedRoute.path.join(' -> ')}\n工作目录：${namedRoute.cwd ?? '未绑定'}\n共享会话数据目录：data/` : '';
+    const routeHint = namedRoute ? `名称预匹配候选：${namedRoute.targetName}（仅供参考，不决定路由）` : '';
     appendLog(runId, 'router', 'info', routeHint || '未通过名称预匹配，交由总协调 Agent 进行语义路由');
-    const plan = await runOrchestrator(input, history, routeHint, getRoutingContext());
+    const rootCandidates = getChildAgents('root-orchestrator');
+    const allowedInitialNodeIds = explicitFirstNodeId ? [explicitFirstNodeId] : rootCandidates.map((item) => item.id);
+    const plan = await runOrchestrator(input, history, routeHint, getRoutingContext(), allowedInitialNodeIds);
     appendLog(runId, 'orchestrator', 'info', JSON.stringify(plan, null, 2));
-    if (!route && plan.targetNodeId) route = routeNode(plan.targetNodeId);
-    if (route) appendLog(runId, 'router', 'info', `${targetNodeId ? '显式指定目标' : '语义路由目标'}：${route.targetName}\n路由链：${route.path.join(' -> ')}\n工作目录：${route.cwd ?? '未绑定'}\n共享会话数据目录：data/`);
-    if (!route && !plan.needsExecution) appendLog(runId, 'router', 'info', '语义路由未选择业务 Agent，保持总协调 Agent 对话');
-    if (!config.runCodex || (!route && !plan.needsExecution)) {
+    const firstNodeId = explicitFirstNodeId ?? plan.targetNodeId;
+    const firstNode = getAgentNode(firstNodeId);
+    if (!config.runCodex || (!firstNode && !plan.needsExecution)) {
       finishRun(runId, sessionId, 'completed', plan.reply);
       return;
     }
-    if (plan.needsExecution && !route && getRoutingContext().some((item) => item.executable)) {
+    if (plan.needsExecution && !firstNode) {
       throw new Error('总协调 Agent 未选择有效的可执行组织节点');
     }
-    if (route) {
-      for (const step of route.steps) step.cwd = ensureAgentWorkspace(sessionId, step.nodeId, step.cwd);
-      route.cwd = route.steps.at(-1)?.cwd ?? route.cwd;
-    }
+    let currentNode = firstNode;
+    let currentPrompt = plan.executionPrompt || input;
     let codexOutput = '';
-    if (route) {
-      for (let index = 0; index < route.steps.length; index += 1) {
-        const step = route.steps[index];
-        setRunCurrent(runId, step.name);
-        const isLeaf = index === route.steps.length - 1;
-        const prompt = isLeaf
-          ? `${plan.executionPrompt || input}\n\n请严格按照当前工作目录中的 AGENTS.md 执行。本次 Session 的共享数据目录是当前工作目录下的 data/；用户输入位于 data/input/，所有需要让用户访问的最终文件必须写入 data/output/。`
-          : `用户需求：${input}\n\n你是组织链中的 ${step.name}。请根据当前目录中的 AGENTS.md 判断应该把任务交给哪个下级 Agent，并返回简短的调度确认，不要直接解决最终问题。`;
-        const promptWithOverride = step.prompt ? `${prompt}\n\n节点附加提示词：\n${step.prompt}` : prompt;
-        if (step.environmentId) recordUsage(sessionId, runId, step.nodeId, step.environmentId);
-        const stepOutput = await runCodex(promptWithOverride, (level, content) => appendLog(runId, `codex:${step.name}`, level, content), step.cwd ?? undefined);
-        if (isLeaf) codexOutput = stepOutput;
+    const executedNames = ['总协调 Agent'];
+    const visited = new Set<string>();
+    for (let stepIndex = 0; currentNode; stepIndex += 1) {
+      const node = currentNode;
+      if (stepIndex >= 20) throw new Error('动态调度超过最大 20 步，已停止以避免循环');
+      if (visited.has(node.id)) throw new Error(`动态调度检测到重复节点：${node.name}`);
+      visited.add(node.id);
+      setRunCurrent(runId, node.name);
+      const workspace = ensureAgentWorkspace(sessionId, node.id, node.environmentId ? (routeNode(node.id)?.cwd ?? null) : null);
+      if (node.environmentId) recordUsage(sessionId, runId, node.id, node.environmentId);
+      const prompt = `${currentPrompt}\n\n你是组织树中的 ${node.name}（${node.role}）。请严格按照当前工作目录中的 AGENTS.md 执行。本次 Session 的共享数据目录是当前工作目录下的 data/；用户输入位于 data/input/，所有需要让用户访问的最终文件必须写入 data/output/。完成本轮工作后，请在输出中明确说明结果，以及是否需要下级 Agent 继续处理。`;
+      const promptWithOverride = node.prompt ? `${prompt}\n\n节点附加提示词：\n${node.prompt}` : prompt;
+      const stepOutput = await runCodex(promptWithOverride, (level, content) => appendLog(runId, `codex:${node.name}`, level, content), workspace);
+      codexOutput = stepOutput;
+      executedNames.push(node.name);
+      appendLog(runId, 'router', 'info', `实际调用链：${executedNames.join(' -> ')}`);
+
+      const candidates = getChildAgents(node.id);
+      if (candidates.length === 0) break;
+      const explicitNextId = targetNodeId ? explicitPath[explicitPath.indexOf(node.id) + 1] : undefined;
+      if (explicitNextId) {
+        const nextNode = candidates.find((candidate) => candidate.id === explicitNextId);
+        if (!nextNode) throw new Error(`显式 Agent 路径不包含直接下级节点：${explicitNextId}`);
+        appendLog(runId, 'router', 'info', `显式路径：${node.name} -> ${nextNode.name}`);
+        currentPrompt = `${input}\n\n上一个 Agent（${node.name}）的输出：\n${stepOutput}`;
+        currentNode = nextNode;
+        continue;
       }
-    } else if (plan.needsExecution) {
-      codexOutput = await runCodex(
-        `${plan.executionPrompt || input}\n\n请严格按照当前工作目录中的 AGENTS.md 执行。`,
-        (level, content) => appendLog(runId, 'codex:总协调 Agent', level, content),
-      );
+      const decision = await decideNextAgent(input, history, node, stepOutput, candidates);
+      appendLog(runId, 'orchestrator', 'info', JSON.stringify({ currentNodeId: node.id, ...decision }, null, 2));
+      if (decision.completed || !decision.nextNodeId) break;
+      const nextNode = candidates.find((candidate) => candidate.id === decision.nextNodeId);
+      if (!nextNode) throw new Error(`动态调度选择了非直接下级节点：${decision.nextNodeId}`);
+      appendLog(runId, 'router', 'info', `动态决策：${node.name} -> ${nextNode.name}`);
+      currentPrompt = decision.executionPrompt || `${input}\n\n上一个 Agent（${node.name}）的输出：\n${stepOutput}`;
+      currentNode = nextNode;
     }
     const publicOutput = `${plan.reply}\n\nCodex 已完成执行。\n\n${codexOutput.length > 2400 ? `${codexOutput.slice(0, 2400)}\n\n详细输出已保存到运行日志。` : codexOutput}`;
     finishRun(runId, sessionId, 'completed', publicOutput);
