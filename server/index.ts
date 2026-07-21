@@ -24,6 +24,13 @@ function findExplicitHandoff(output: string, candidates: Array<{ id: string; nam
   });
 }
 
+function getMcpDecision(runId: string, nodeName: string) {
+  const logs = getLogs(runId) as Array<{ source: string; content: string }>;
+  const log = [...logs].reverse().find((item) => item.source === `mcp:${nodeName}` && item.content.includes('"event":"'));
+  if (!log) return null;
+  try { return JSON.parse(log.content) as { event?: string; targetNodeId?: string; task?: string; reason?: string; output?: string }; } catch { return null; }
+}
+
 async function executeRun(runId: string, sessionId: string, input: string, targetNodeId?: string) {
   try {
     setRunCurrent(runId, '总协调 Agent');
@@ -66,9 +73,9 @@ async function executeRun(runId: string, sessionId: string, input: string, targe
       const coordinationInstruction = candidates.length > 0
         ? '平台总规则：如果任意直接下级 Agent 比你更适合处理用户任务，你必须把任务交给该下级，不能自行结束或替代下级作答。你是一个有可执行下级的协调节点，请分析并组织下级处理，输出应明确说明是否需要把任务交给某个下级。'
         : '你是当前分支的执行节点，请完成分配给你的实际任务并给出最终结果。';
-      const prompt = `${currentPrompt}\n\n你是组织树中的 ${node.name}（${node.role}）。${coordinationInstruction}\n请严格按照当前工作目录中的 AGENTS.md 执行。本次 Session 的共享数据目录是当前工作目录下的 data/；用户输入位于 data/input/，所有需要让用户访问的最终文件必须写入 data/output/。完成本轮工作后，请在输出中明确说明结果，以及是否需要下级 Agent 继续处理。`;
+      const prompt = `${currentPrompt}\n\n你是组织树中的 ${node.name}（${node.role}）。${coordinationInstruction}\n本次 Codex 已连接 Rubick MCP。请先使用 rubick_list_next_agents 查看直接下级；如果下级更适合处理，必须调用 rubick_handoff；只有没有下级更适合时才调用 rubick_complete。请严格按照当前工作目录中的 AGENTS.md 执行。本次 Session 的共享数据目录是当前工作目录下的 data/；用户输入位于 data/input/，所有需要让用户访问的最终文件必须写入 data/output/。完成本轮工作后，请在输出中明确说明结果，以及是否需要下级 Agent 继续处理。`;
       const promptWithOverride = node.prompt ? `${prompt}\n\n节点附加提示词：\n${node.prompt}` : prompt;
-      const stepOutput = await runCodex(promptWithOverride, (level, content) => appendLog(runId, `codex:${node.name}`, level, content), workspace);
+      const stepOutput = await runCodex(promptWithOverride, (level, content) => appendLog(runId, `codex:${node.name}`, level, content), workspace, { runId, sessionId, nodeId: node.id });
       codexOutput = stepOutput;
       executedNames.push(node.name);
       appendLog(runId, 'router', 'info', `实际调用链：${executedNames.join(' -> ')}`);
@@ -83,7 +90,13 @@ async function executeRun(runId: string, sessionId: string, input: string, targe
         currentNode = nextNode;
         continue;
       }
-      let decision = await decideNextAgent(input, history, node, stepOutput, candidates);
+      const mcpDecision = getMcpDecision(runId, node.name);
+      let decision = mcpDecision?.event === 'handoff_requested' && mcpDecision.targetNodeId
+        ? { completed: false, nextNodeId: mcpDecision.targetNodeId, reply: mcpDecision.reason ?? 'MCP 请求转交下级 Agent。', executionPrompt: mcpDecision.task ?? '' }
+        : mcpDecision?.event === 'completion_requested' && candidates.length === 0
+          ? { completed: true, nextNodeId: null, reply: mcpDecision.output ?? 'MCP 声明当前任务已完成。', executionPrompt: '' }
+          : await decideNextAgent(input, history, node, stepOutput, candidates);
+      if (mcpDecision) appendLog(runId, 'orchestrator', 'info', `MCP 调度事件：${JSON.stringify(mcpDecision)}`);
       const explicitHandoff = findExplicitHandoff(stepOutput, candidates);
       if (explicitHandoff && decision.nextNodeId !== explicitHandoff.id) {
         appendLog(runId, 'router', 'info', `调度校验：识别到当前 Agent 明确委派给 ${explicitHandoff.name}`);

@@ -5,6 +5,7 @@
     "": {
       "name": "rubick",
       "dependencies": {
+        "@modelcontextprotocol/sdk": "^1.29.0",
         "@openai/agents": "0.13.5",
         "@openai/agents-core": "0.13.5",
         "@openai/agents-openai": "0.13.5",
