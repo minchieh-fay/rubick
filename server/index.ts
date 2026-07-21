@@ -16,6 +16,14 @@ const json = (data: unknown, status = 200) => Response.json(data, {
   headers: { 'Access-Control-Allow-Origin': '*' },
 });
 
+function findExplicitHandoff(output: string, candidates: Array<{ id: string; name: string; environmentName: string | null }>) {
+  const handoffPattern = /(交给|转交|委派|由.+负责|让.+处理|应该.+处理|需要.+处理|下级.+继续)/i;
+  return candidates.find((candidate) => {
+    const names = [candidate.name, candidate.environmentName].filter(Boolean) as string[];
+    return names.some((name) => output.includes(name)) && handoffPattern.test(output);
+  });
+}
+
 async function executeRun(runId: string, sessionId: string, input: string, targetNodeId?: string) {
   try {
     setRunCurrent(runId, '总协调 Agent');
@@ -75,7 +83,17 @@ async function executeRun(runId: string, sessionId: string, input: string, targe
         currentNode = nextNode;
         continue;
       }
-      const decision = await decideNextAgent(input, history, node, stepOutput, candidates);
+      let decision = await decideNextAgent(input, history, node, stepOutput, candidates);
+      const explicitHandoff = findExplicitHandoff(stepOutput, candidates);
+      if (explicitHandoff && decision.nextNodeId !== explicitHandoff.id) {
+        appendLog(runId, 'router', 'info', `调度校验：识别到当前 Agent 明确委派给 ${explicitHandoff.name}`);
+        decision = {
+          ...decision,
+          completed: false,
+          nextNodeId: explicitHandoff.id,
+          executionPrompt: decision.executionPrompt || `${input}\n\n当前 Agent（${node.name}）明确要求你继续处理：\n${stepOutput}`,
+        };
+      }
       appendLog(runId, 'orchestrator', 'info', JSON.stringify({ currentNodeId: node.id, ...decision }, null, 2));
       if (decision.completed || !decision.nextNodeId) break;
       const nextNode = candidates.find((candidate) => candidate.id === decision.nextNodeId);
