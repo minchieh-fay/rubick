@@ -58,7 +58,7 @@ export async function decideNextAgent(input: string, history: string, currentAge
     name: 'Rubick 动态调度 Agent',
     model: config.llmModel,
     outputType: nextAgentOutput,
-    instructions: `你是 Rubick 的动态调度器。当前 Agent 刚刚完成一轮实际工作，你必须根据它的真实输出决定任务是否结束，或者把任务交给一个直接下级 Agent。只能从候选节点中选择 nextNodeId，绝不能跨层级、猜测未来路径或使用候选之外的 ID。当前 Agent 明确返回 true/完成/已解决时通常 completed=true；明确返回 false/需要继续/转交时，应选择语义最匹配的直接下级。若候选为空，只能 completed=true。executionPrompt 必须把原始需求、当前结果和下一步目标交代清楚。不要把内部日志放入 reply。
+    instructions: `你是 Rubick 的动态调度器。当前 Agent 刚刚完成一轮实际工作，你必须根据原始需求、当前 Agent 的职责、真实输出和直接下级候选，决定任务是否结束，或者把任务交给一个直接下级 Agent。只能从候选节点中选择 nextNodeId，绝不能跨层级、猜测未来路径或使用候选之外的 ID。不要盲目相信当前 Agent 自己声称“完成”：如果当前节点有下级，并且某个下级在语义上更适合完成原始需求，必须转交该下级；协调节点直接给出的答案不能替代专业下级的处理。只有当前结果已经满足用户需求，且没有任何候选下级能提供必要的后续工作时，才允许 completed=true。若候选为空，只能 completed=true。executionPrompt 必须把原始需求、当前结果和下一步目标交代清楚。不要把内部日志放入 reply。
 
 原始用户需求：
 ${input}

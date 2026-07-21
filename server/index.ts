@@ -54,14 +54,17 @@ async function executeRun(runId: string, sessionId: string, input: string, targe
       setRunCurrent(runId, node.name);
       const workspace = ensureAgentWorkspace(sessionId, node.id, node.environmentId ? (routeNode(node.id)?.cwd ?? null) : null);
       if (node.environmentId) recordUsage(sessionId, runId, node.id, node.environmentId);
-      const prompt = `${currentPrompt}\n\n你是组织树中的 ${node.name}（${node.role}）。请严格按照当前工作目录中的 AGENTS.md 执行。本次 Session 的共享数据目录是当前工作目录下的 data/；用户输入位于 data/input/，所有需要让用户访问的最终文件必须写入 data/output/。完成本轮工作后，请在输出中明确说明结果，以及是否需要下级 Agent 继续处理。`;
+      const candidates = getChildAgents(node.id);
+      const coordinationInstruction = candidates.length > 0
+        ? '你是一个有可执行下级的协调节点。请分析并组织下级处理，不要仅因自己能给出一个答案就替代下级完成；输出应明确说明是否需要把任务交给某个下级。'
+        : '你是当前分支的执行节点，请完成分配给你的实际任务并给出最终结果。';
+      const prompt = `${currentPrompt}\n\n你是组织树中的 ${node.name}（${node.role}）。${coordinationInstruction}\n请严格按照当前工作目录中的 AGENTS.md 执行。本次 Session 的共享数据目录是当前工作目录下的 data/；用户输入位于 data/input/，所有需要让用户访问的最终文件必须写入 data/output/。完成本轮工作后，请在输出中明确说明结果，以及是否需要下级 Agent 继续处理。`;
       const promptWithOverride = node.prompt ? `${prompt}\n\n节点附加提示词：\n${node.prompt}` : prompt;
       const stepOutput = await runCodex(promptWithOverride, (level, content) => appendLog(runId, `codex:${node.name}`, level, content), workspace);
       codexOutput = stepOutput;
       executedNames.push(node.name);
       appendLog(runId, 'router', 'info', `实际调用链：${executedNames.join(' -> ')}`);
 
-      const candidates = getChildAgents(node.id);
       if (candidates.length === 0) break;
       const explicitNextId = targetNodeId ? explicitPath[explicitPath.indexOf(node.id) + 1] : undefined;
       if (explicitNextId) {
