@@ -2,125 +2,40 @@ import { rmSync } from 'node:fs';
 import { config } from './config/env';
 import './database/database';
 import { getTree, createNode, updateNode, deleteNode } from './modules/agents/agent.service';
-import { getAgentNode, getChildAgents, getPathNodeIds, getRoutingContext, routeInput, routeNode } from './modules/agents/router.service';
-import { recordUsage } from './modules/agents/usage.service';
-import { isAvailable as isCodexAvailable, runCodex } from './modules/codex/codex.service';
-import { decideNextAgent, isConfigured as isLlmConfigured, runOrchestrator } from './modules/llm/llm.service';
-import { createSession, createTurn, finishRun, getHistory, getSession, listSessions, setRunCurrent } from './modules/sessions/session.service';
+import { isAvailable as isCodexAvailable } from './modules/codex/codex.service';
+import { isConfigured as isLlmConfigured, runRuntimeAgent } from './modules/llm/llm.service';
+import { createSession, createTurn, deleteSession, finishRun, getHistory, getSession, listSessions, setRunCurrent, setSessionStatus } from './modules/sessions/session.service';
 import { createArchive, deleteEnvironment, importArchive, importDirectory, listEnvironments } from './modules/environments/environment.service';
 import { appendLog, getLogs } from './modules/runs/run-log.service';
-import { ensureAgentWorkspace, listSessionFiles, saveSessionUpload, sessionFilePath } from './modules/sessions/session-workspace.service';
+import { listSessionFiles, saveSessionUpload, sessionFilePath } from './modules/sessions/session-workspace.service';
 
 const json = (data: unknown, status = 200) => Response.json(data, {
   status,
   headers: { 'Access-Control-Allow-Origin': '*' },
 });
 
-function findExplicitHandoff(output: string, candidates: Array<{ id: string; name: string; environmentName: string | null }>) {
-  const handoffPattern = /(交给|转交|委派|由.+负责|让.+处理|应该.+处理|需要.+处理|下级.+继续)/i;
-  return candidates.find((candidate) => {
-    const names = [candidate.name, candidate.environmentName].filter(Boolean) as string[];
-    return names.some((name) => output.includes(name)) && handoffPattern.test(output);
-  });
-}
+const runControllers = new Map<string, AbortController>();
 
-function getMcpDecision(runId: string, nodeName: string) {
-  const logs = getLogs(runId) as Array<{ source: string; content: string }>;
-  const log = [...logs].reverse().find((item) => item.source === `mcp:${nodeName}` && item.content.includes('"event":"'));
-  if (!log) return null;
-  try { return JSON.parse(log.content) as { event?: string; targetNodeId?: string; task?: string; reason?: string; output?: string }; } catch { return null; }
-}
-
-async function executeRun(runId: string, sessionId: string, input: string, targetNodeId?: string) {
+async function executeRun(runId: string, sessionId: string, input: string, targetNodeId?: string, controller = new AbortController()) {
+  runControllers.set(sessionId, controller);
   try {
     setRunCurrent(runId, '总协调 Agent');
     appendLog(runId, 'orchestrator', 'info', `收到用户请求：\n${input}`);
-    const namedRoute = routeInput(input);
-    const explicitPath = targetNodeId ? getPathNodeIds(targetNodeId) : [];
-    const rootIndex = explicitPath.indexOf('root-orchestrator');
-    const explicitFirstNodeId = rootIndex >= 0 ? explicitPath[rootIndex + 1] : undefined;
-    if (targetNodeId && (!routeNode(targetNodeId) || !explicitFirstNodeId)) throw new Error('指定的 Agent 不存在或没有可执行环境');
     const history = getHistory(sessionId).map((item) => `${item.role}: ${item.content}`).join('\n');
-    const routeHint = namedRoute ? `名称预匹配候选：${namedRoute.targetName}（仅供参考，不决定路由）` : '';
-    appendLog(runId, 'router', 'info', routeHint || '未通过名称预匹配，交由总协调 Agent 进行语义路由');
-    const rootCandidates = getChildAgents('root-orchestrator');
-    const allowedInitialNodeIds = explicitFirstNodeId ? [explicitFirstNodeId] : rootCandidates.map((item) => item.id);
-    const plan = await runOrchestrator(input, history, routeHint, getRoutingContext(), allowedInitialNodeIds);
-    appendLog(runId, 'orchestrator', 'info', JSON.stringify(plan, null, 2));
-    const firstNodeId = explicitFirstNodeId ?? plan.targetNodeId;
-    const firstNode = getAgentNode(firstNodeId);
-    if (!config.runCodex || (!firstNode && !plan.needsExecution)) {
-      finishRun(runId, sessionId, 'completed', plan.reply);
-      return;
-    }
-    if (plan.needsExecution && !firstNode) {
-      throw new Error('总协调 Agent 未选择有效的可执行组织节点');
-    }
-    let currentNode = firstNode;
-    let currentPrompt = plan.executionPrompt || input;
-    let codexOutput = '';
-    const executedNames = ['总协调 Agent'];
-    const visited = new Set<string>();
-    for (let stepIndex = 0; currentNode; stepIndex += 1) {
-      const node = currentNode;
-      if (stepIndex >= 20) throw new Error('动态调度超过最大 20 步，已停止以避免循环');
-      if (visited.has(node.id)) throw new Error(`动态调度检测到重复节点：${node.name}`);
-      visited.add(node.id);
-      setRunCurrent(runId, node.name);
-      const workspace = ensureAgentWorkspace(sessionId, node.id, node.environmentId ? (routeNode(node.id)?.cwd ?? null) : null);
-      if (node.environmentId) recordUsage(sessionId, runId, node.id, node.environmentId);
-      const candidates = getChildAgents(node.id);
-      const coordinationInstruction = candidates.length > 0
-        ? '平台总规则：如果任意直接下级 Agent 比你更适合处理用户任务，你必须把任务交给该下级，不能自行结束或替代下级作答。你是一个有可执行下级的协调节点，请分析并组织下级处理，输出应明确说明是否需要把任务交给某个下级。'
-        : '你是当前分支的执行节点，请完成分配给你的实际任务并给出最终结果。';
-      const prompt = `${currentPrompt}\n\n你是组织树中的 ${node.name}（${node.role}）。${coordinationInstruction}\n本次 Codex 已连接 Rubick MCP。请先使用 rubick_list_next_agents 查看直接下级；如果下级更适合处理，必须调用 rubick_handoff；只有没有下级更适合时才调用 rubick_complete。请严格按照当前工作目录中的 AGENTS.md 执行。本次 Session 的共享数据目录是当前工作目录下的 data/；用户输入位于 data/input/，所有需要让用户访问的最终文件必须写入 data/output/。完成本轮工作后，请在输出中明确说明结果，以及是否需要下级 Agent 继续处理。`;
-      const promptWithOverride = node.prompt ? `${prompt}\n\n节点附加提示词：\n${node.prompt}` : prompt;
-      const stepOutput = await runCodex(promptWithOverride, (level, content) => appendLog(runId, `codex:${node.name}`, level, content), workspace, { runId, sessionId, nodeId: node.id });
-      codexOutput = stepOutput;
-      executedNames.push(node.name);
-      appendLog(runId, 'router', 'info', `实际调用链：${executedNames.join(' -> ')}`);
-
-      if (candidates.length === 0) break;
-      const explicitNextId = targetNodeId ? explicitPath[explicitPath.indexOf(node.id) + 1] : undefined;
-      if (explicitNextId) {
-        const nextNode = candidates.find((candidate) => candidate.id === explicitNextId);
-        if (!nextNode) throw new Error(`显式 Agent 路径不包含直接下级节点：${explicitNextId}`);
-        appendLog(runId, 'router', 'info', `显式路径：${node.name} -> ${nextNode.name}`);
-        currentPrompt = `${input}\n\n上一个 Agent（${node.name}）的输出：\n${stepOutput}`;
-        currentNode = nextNode;
-        continue;
-      }
-      const mcpDecision = getMcpDecision(runId, node.name);
-      let decision = mcpDecision?.event === 'handoff_requested' && mcpDecision.targetNodeId
-        ? { completed: false, nextNodeId: mcpDecision.targetNodeId, reply: mcpDecision.reason ?? 'MCP 请求转交下级 Agent。', executionPrompt: mcpDecision.task ?? '' }
-        : mcpDecision?.event === 'completion_requested' && candidates.length === 0
-          ? { completed: true, nextNodeId: null, reply: mcpDecision.output ?? 'MCP 声明当前任务已完成。', executionPrompt: '' }
-          : await decideNextAgent(input, history, node, stepOutput, candidates);
-      if (mcpDecision) appendLog(runId, 'orchestrator', 'info', `MCP 调度事件：${JSON.stringify(mcpDecision)}`);
-      const explicitHandoff = findExplicitHandoff(stepOutput, candidates);
-      if (explicitHandoff && decision.nextNodeId !== explicitHandoff.id) {
-        appendLog(runId, 'router', 'info', `调度校验：识别到当前 Agent 明确委派给 ${explicitHandoff.name}`);
-        decision = {
-          ...decision,
-          completed: false,
-          nextNodeId: explicitHandoff.id,
-          executionPrompt: decision.executionPrompt || `${input}\n\n当前 Agent（${node.name}）明确要求你继续处理：\n${stepOutput}`,
-        };
-      }
-      appendLog(runId, 'orchestrator', 'info', JSON.stringify({ currentNodeId: node.id, ...decision }, null, 2));
-      if (decision.completed || !decision.nextNodeId) break;
-      const nextNode = candidates.find((candidate) => candidate.id === decision.nextNodeId);
-      if (!nextNode) throw new Error(`动态调度选择了非直接下级节点：${decision.nextNodeId}`);
-      appendLog(runId, 'router', 'info', `动态决策：${node.name} -> ${nextNode.name}`);
-      currentPrompt = decision.executionPrompt || `${input}\n\n上一个 Agent（${node.name}）的输出：\n${stepOutput}`;
-      currentNode = nextNode;
-    }
-    const publicOutput = `${plan.reply}\n\nCodex 已完成执行。\n\n${codexOutput.length > 2400 ? `${codexOutput.slice(0, 2400)}\n\n详细输出已保存到运行日志。` : codexOutput}`;
-    finishRun(runId, sessionId, 'completed', publicOutput);
+    const result = await runRuntimeAgent(input, history, { runId, sessionId, signal: controller.signal }, targetNodeId);
+    const currentSession = getSession(sessionId).session as { status?: string } | null;
+    if (currentSession?.status === 'waiting_user' || currentSession?.status === 'paused' || currentSession?.status === 'cancelled') return;
+    setRunCurrent(runId, result.currentAgent);
+    appendLog(runId, 'orchestrator', 'info', `SDK Agent 运行完成：${result.currentAgent}`);
+    finishRun(runId, sessionId, 'completed', result.output);
   } catch (error) {
+    const currentSession = getSession(sessionId).session as { status?: string } | null;
+    if (currentSession?.status === 'waiting_user' || currentSession?.status === 'paused' || currentSession?.status === 'cancelled' || controller.signal.aborted) return;
     const message = `执行失败：${error instanceof Error ? error.message : String(error)}`;
     appendLog(runId, 'runtime', 'error', message);
     finishRun(runId, sessionId, 'failed', message);
+  } finally {
+    runControllers.delete(sessionId);
   }
 }
 
@@ -134,13 +49,14 @@ const server = Bun.serve({
       return new Response(Bun.file(filePath));
     }
     if (url.pathname === '/api/bootstrap') {
-      const environmentPage = listEnvironments({ page: 1, pageSize: 24 });
+      const environmentPage = listEnvironments({ search: url.searchParams.get('environmentSearch') ?? '', page: 1, pageSize: 24 });
       return json({ tree: getTree(), environments: environmentPage.items, environmentsMeta: environmentPage, sessions: listSessions(), codexBin: config.codexBin, codexAvailable: isCodexAvailable(), llmConfigured: isLlmConfigured(), llmModel: config.llmModel });
     }
     if (url.pathname === '/api/sessions' && req.method === 'POST') {
-      const body = await req.json() as { content?: string; targetNodeId?: string };
+      const body = await req.json() as { content?: string; targetNodeId?: string; templateId?: string };
       const content = body.content?.trim() ?? '';
       if (!content) return json({ error: 'content is required' }, 400);
+      if (body.templateId && /\{[^{}]+\}/.test(content)) return json({ error: '模板变量尚未填写完整' }, 422);
       const created = createSession(content, body.targetNodeId);
       void executeRun(created.runId, created.sessionId, content, body.targetNodeId);
       return json(created);
@@ -149,12 +65,35 @@ const server = Bun.serve({
     if (sessionMatch && req.method === 'GET') return json(getSession(sessionMatch[1]));
     const turnMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/messages$/);
     if (turnMatch && req.method === 'POST') {
-      const body = await req.json() as { content?: string; targetNodeId?: string };
+      const body = await req.json() as { content?: string; targetNodeId?: string; templateId?: string };
       const content = body.content?.trim() ?? '';
       if (!content) return json({ error: 'content is required' }, 400);
+      if (body.templateId && /\{[^{}]+\}/.test(content)) return json({ error: '模板变量尚未填写完整' }, 422);
       const created = createTurn(turnMatch[1], content, body.targetNodeId);
       void executeRun(created.runId, turnMatch[1], content, body.targetNodeId);
       return json(created);
+    }
+    const resumeMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/resume$/);
+    if (resumeMatch && req.method === 'POST') {
+      const body = await req.json() as { content?: string };
+      const content = body.content?.trim() ?? '';
+      if (!content) return json({ error: 'content is required' }, 400);
+      const created = createTurn(resumeMatch[1], content);
+      void executeRun(created.runId, resumeMatch[1], content);
+      return json(created);
+    }
+    const statusMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/(pause|cancel)$/);
+    if (statusMatch && req.method === 'POST') {
+      const controller = runControllers.get(statusMatch[1]);
+      controller?.abort();
+      setSessionStatus(statusMatch[1], statusMatch[2] === 'pause' ? 'paused' : 'cancelled');
+      return json({ ok: true, status: statusMatch[2] === 'pause' ? 'paused' : 'cancelled' });
+    }
+    const deleteSessionMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)$/);
+    if (deleteSessionMatch && req.method === 'DELETE') {
+      runControllers.get(deleteSessionMatch[1])?.abort();
+      deleteSession(deleteSessionMatch[1]);
+      return json({ ok: true });
     }
     const sessionFilesMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)\/(input|output)$/);
     if (sessionFilesMatch && req.method === 'GET') return json({ files: listSessionFiles(sessionFilesMatch[1], sessionFilesMatch[2] as 'input' | 'output') });

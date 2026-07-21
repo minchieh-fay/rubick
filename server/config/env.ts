@@ -4,6 +4,7 @@ export type RubickConfig = {
   codexBin: string;
   codexArgs: string[];
   codexCwd: string;
+  codexTimeoutMs: number;
   llmApiKey: string;
   llmBaseUrl: string;
   llmModel: string;
@@ -16,6 +17,7 @@ export const config: RubickConfig = {
   codexBin: Bun.env.CODEX_BIN?.trim() || 'codex',
   codexArgs: Bun.env.CODEX_ARGS?.split(/\s+/).filter(Boolean) ?? [],
   codexCwd: Bun.env.CODEX_CWD ?? process.cwd(),
+  codexTimeoutMs: Number(Bun.env.CODEX_TIMEOUT_MS ?? 10 * 60 * 1000),
   llmApiKey: Bun.env.LLM_API_KEY ?? '',
   llmBaseUrl: Bun.env.LLM_BASE_URL ?? '',
   llmModel: Bun.env.LLM_MODEL ?? 'gpt-5.6-luna',

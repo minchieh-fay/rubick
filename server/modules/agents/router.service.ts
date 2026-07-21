@@ -35,7 +35,17 @@ function toAgentNode(row: NodeRow): AgentNode {
 export function getAgentNode(nodeId: string | null | undefined) {
   if (!nodeId) return null;
   const row = nodes().find((item) => item.id === nodeId && item.environment_id);
+  return row ? { ...toAgentNode(row), cwd: getEnvironmentPath(row.environment_id) } : null;
+}
+
+export function getRuntimeAgentNode(nodeId: string | null | undefined) {
+  if (!nodeId) return null;
+  const row = nodes().find((item) => item.id === nodeId);
   return row ? toAgentNode(row) : null;
+}
+
+export function getRuntimeChildAgents(parentId: string) {
+  return nodes().filter((item) => item.parent_id === parentId).map(toAgentNode);
 }
 
 export function getChildAgents(parentId: string) {

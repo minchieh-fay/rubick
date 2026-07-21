@@ -20,6 +20,12 @@ export function updateNode(id: string, values: { name?: string; role?: string; e
 
 export function deleteNode(id: string) {
   if (id === 'root-orchestrator') return false;
-  db.query('DELETE FROM agent_nodes WHERE id=? OR parent_id=?').run(id, id);
+  const ids = [id];
+  for (let index = 0; index < ids.length; index += 1) {
+    const children = db.query('SELECT id FROM agent_nodes WHERE parent_id=?').all(ids[index]) as { id: string }[];
+    ids.push(...children.map((child) => child.id));
+  }
+  const placeholders = ids.map(() => '?').join(',');
+  db.query(`DELETE FROM agent_nodes WHERE id IN (${placeholders})`).run(...ids);
   return true;
 }

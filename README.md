@@ -2,12 +2,12 @@
 
 Rubick 是一个基于 Bun、TypeScript、OpenAI Agents SDK 和 Codex CLI 的内网 Agent 编排平台。
 
-平台将用户请求交给总协调 Agent，由它判断是否需要执行任务，并沿着 Agent 组织树调度业务 Agent。每个业务 Agent 对应一个用户上传的 Codex 工作环境，环境包含 `AGENTS.md`、Skills、脚本和其他运行资源。
+平台将用户请求交给由组织树动态构建的 Agents SDK Agent 图。每个节点是一个 SDK Agent，直接下级通过 handoff 暴露；节点绑定的 Codex 环境通过 `codex_execute` tool 执行文件、脚本和其他实际工作。环境包含 `AGENTS.md`、Skills、脚本和其他运行资源。
 
 ## 当前能力
 
-- 使用 OpenAI Responses API 运行总协调 Agent
-- 使用系统 `codex exec` 执行业务 Agent
+- 使用 OpenAI Responses API 运行组织树中的 SDK Agent
+- 使用系统 `codex exec` 作为节点的执行工具
 - Agent 环境 ZIP 上传、下载和删除
 - Agent 环境名称、上传时间和使用次数管理
 - 服务端分页和搜索环境列表
@@ -17,7 +17,7 @@ Rubick 是一个基于 Bun、TypeScript、OpenAI Agents SDK 和 Codex CLI 的内
 - 组织树拖拽挂载和节点选择挂载
 - Session 多轮对话和历史记录
 - 运行总耗时、当前 Agent 和当前 Agent 耗时
-- LLM、路由、Codex stdout/stderr 独立运行日志
+- SDK handoff、Agent、Codex stdout/stderr 独立运行日志
 - Agent 环境使用流水统计
 
 ## 技术栈
@@ -129,6 +129,8 @@ data/agent-environments/<environment-id>/
 总协调 Agent -> 学校校长 Agent -> 数学老师 Agent
 ```
 
+运行路径由 Agents SDK 的 handoff 决定；只有绑定 Codex 环境的节点才会拥有 `codex_execute` 工具。平台不会根据领域关键词或 Agent 输出文本推断转交目标。
+
 节点使用次数按挂载节点统计。同一 Session 多次使用同一节点，会累计多次；同一个环境挂载在不同位置时，各位置分别统计。
 
 ## API
@@ -167,8 +169,8 @@ server/
 ├── config/             配置读取
 ├── database/           SQLite 初始化和迁移
 ├── modules/
-│   ├── agents/         Agent 节点、路由和使用统计
-│   ├── codex/          Codex CLI 执行适配器
+│   ├── agents/         Agent 节点、运行时 Agent 图和使用统计
+│   ├── codex/          Codex CLI tool 执行适配器
 │   ├── environments/   Agent 环境上传、下载和生命周期
 │   ├── llm/            Responses API 和总协调 Agent
 │   ├── runs/           运行日志
