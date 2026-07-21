@@ -20,15 +20,17 @@ async function executeRun(runId: string, sessionId: string, input: string, targe
   try {
     setRunCurrent(runId, '总协调 Agent');
     appendLog(runId, 'orchestrator', 'info', `收到用户请求：\n${input}`);
-    let route = targetNodeId ? routeNode(targetNodeId) : routeInput(input);
+    const namedRoute = routeInput(input);
+    let route = targetNodeId ? routeNode(targetNodeId) : null;
     if (targetNodeId && !route) throw new Error('指定的 Agent 不存在或没有可执行环境');
     const history = getHistory(sessionId).map((item) => `${item.role}: ${item.content}`).join('\n');
-    const routeHint = route ? `目标 Agent：${route.targetName}\n路由链：${route.path.join(' -> ')}\n工作目录：${route.cwd ?? '未绑定'}\n共享会话数据目录：data/` : '';
-    appendLog(runId, 'router', 'info', routeHint || '未命中业务路由，保持总协调 Agent 对话');
+    const routeHint = namedRoute ? `名称预匹配目标：${namedRoute.targetName}\n名称预匹配路由链：${namedRoute.path.join(' -> ')}\n工作目录：${namedRoute.cwd ?? '未绑定'}\n共享会话数据目录：data/` : '';
+    appendLog(runId, 'router', 'info', routeHint || '未通过名称预匹配，交由总协调 Agent 进行语义路由');
     const plan = await runOrchestrator(input, history, routeHint, getRoutingContext());
     appendLog(runId, 'orchestrator', 'info', JSON.stringify(plan, null, 2));
     if (!route && plan.targetNodeId) route = routeNode(plan.targetNodeId);
-    if (route && !routeHint) appendLog(runId, 'router', 'info', `语义路由目标：${route.targetName}\n路由链：${route.path.join(' -> ')}\n工作目录：${route.cwd ?? '未绑定'}\n共享会话数据目录：data/`);
+    if (route && !targetNodeId) appendLog(runId, 'router', 'info', `语义路由目标：${route.targetName}\n路由链：${route.path.join(' -> ')}\n工作目录：${route.cwd ?? '未绑定'}\n共享会话数据目录：data/`);
+    if (!route && !plan.needsExecution) appendLog(runId, 'router', 'info', '语义路由未选择业务 Agent，保持总协调 Agent 对话');
     if (!config.runCodex || (!route && !plan.needsExecution)) {
       finishRun(runId, sessionId, 'completed', plan.reply);
       return;
