@@ -27,7 +27,8 @@ async function executeRun(runId: string, sessionId: string, input: string, targe
     appendLog(runId, 'router', 'info', routeHint || '未命中业务路由，保持总协调 Agent 对话');
     const plan = await runOrchestrator(input, history, routeHint, getRoutingContext());
     appendLog(runId, 'orchestrator', 'info', JSON.stringify(plan, null, 2));
-    if (!route && plan.needsExecution) route = routeNode(plan.targetNodeId);
+    if (!route && plan.targetNodeId) route = routeNode(plan.targetNodeId);
+    if (route && !routeHint) appendLog(runId, 'router', 'info', `语义路由目标：${route.targetName}\n路由链：${route.path.join(' -> ')}\n工作目录：${route.cwd ?? '未绑定'}\n共享会话数据目录：data/`);
     if (!config.runCodex || (!route && !plan.needsExecution)) {
       finishRun(runId, sessionId, 'completed', plan.reply);
       return;
