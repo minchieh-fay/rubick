@@ -1,0 +1,10 @@
+[common]
+domain = "http://127.0.0.1:3000"
+port = 3000
+id = "rubick"
+name = "rubick"
+
+[rubick]
+heartbeat_interval_seconds = 30
+expire_after_seconds = 50
+skill_file = "rubick/SKILL.md"
