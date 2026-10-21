@@ -18,8 +18,8 @@ pub struct SkillMetadata {
 #[derive(Deserialize)]
 pub struct RegisterRequest {
     pub id: String,
-    pub name: String,
-    pub domain: String,
+    #[serde(rename = "domain")]
+    pub _domain: String,
     pub port: u16,
     pub skills: Vec<SkillMetadata>,
 }
@@ -35,7 +35,6 @@ pub struct HeartbeatRequest {
 #[derive(Clone)]
 pub struct ServiceRecord {
     pub id: String,
-    pub domain: String,
     pub port: u16,
     pub skills: Vec<SkillMetadata>,
     pub epoch: String,
@@ -53,12 +52,8 @@ impl Registry {
     pub async fn register(&self, request: RegisterRequest) -> Result<String, &'static str> {
         // step.1 校验服务身份和技能元数据的唯一性
         // 调用辅助函数确保服务 ID 可安全映射到公开 HTTP 路径。
-        if !help::help_valid_identifier(&request.id)
-            || request.name.trim().is_empty()
-            || request.domain.trim().is_empty()
-            || request.port == 0
-        {
-            return Err("id、name、domain 和有效 port 均为必填项");
+        if !help::help_valid_identifier(&request.id) || request.port == 0 {
+            return Err("有效 id 和 port 均为必填项");
         }
         let mut skill_ids = std::collections::HashSet::new();
         for skill in &request.skills {
@@ -75,7 +70,6 @@ impl Registry {
         let epoch = help::help_new_epoch();
         let record = ServiceRecord {
             id: request.id.clone(),
-            domain: request.domain.trim_end_matches('/').to_string(),
             port: request.port,
             skills: request.skills,
             epoch: epoch.clone(),
@@ -122,14 +116,20 @@ impl Registry {
     }
 
     // 按 namespaced Skill ID 查找其归属服务和原始元数据。
-    pub async fn find_skill(&self, id: &str) -> Option<(ServiceRecord, SkillMetadata)> {
+    pub async fn find_skill(
+        &self,
+        id: &str,
+        center_id: &str,
+    ) -> Option<(ServiceRecord, SkillMetadata)> {
         let services = self.services.read().await;
         services.values().find_map(|service| {
-            // 调用辅助函数按服务 ID 和技能 ID 计算注册表中的公开 ID。
+            // 调用辅助函数按中心 ID、服务 ID 和技能 ID 计算注册表中的公开 ID。
             service
                 .skills
                 .iter()
-                .find(|skill| help::help_namespaced_skill_id(&service.id, &skill.id) == id)
+                .find(|skill| {
+                    help::help_namespaced_skill_id(center_id, &service.id, &skill.id) == id
+                })
                 .map(|skill| (service.clone(), skill.clone()))
         })
     }

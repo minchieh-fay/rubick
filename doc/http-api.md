@@ -16,17 +16,17 @@
 {
   "skills": [
     {
-      "id": "rubick_video_short_drama",
-      "name": "短剧制作",
-      "description": "规划并制作短剧视频"
+      "id": "Rubick_example_sample",
+      "name": "示例能力",
+      "description": "说明示例能力的用途"
     }
   ]
 }
 ```
 
-公开 ID 由 `rubick_{service_id}_{skill_id}` 组成。磁盘文件名及服务上报的技能 ID 不需要 `rubick_` 前缀。
+公开 ID 由 `{common.id}_{service_id}_{skill_id}` 组成。磁盘文件名及服务上报的技能 ID 不需要中心 ID 前缀。不同 Rubick 实例应配置不同的 `common.id`，以避免公开 ID 冲突。
 
-### `GET /api/skills/{rubick_skill_id}`
+### `GET /api/skills/{namespaced_skill_id}`
 
 Rubick 查找 Skill 所属服务，将 namespaced ID 映射成子服务本地 ID，并转发到该子服务的 `GET /api/skills/{skill_id}`。成功时将子服务返回的完整 Markdown 正文转交 Agent。未知或已过期 ID 返回 `404`；上游不可用或返回非 2xx（除 404）时返回 `502`。
 
@@ -40,15 +40,14 @@ Rubick 查找 Skill 所属服务，将 namespaced ID 映射成子服务本地 ID
 
 ```json
 {
-  "id": "video",
-  "name": "视频服务",
-  "domain": "http://127.0.0.1:4100",
+  "id": "example",
+  "domain": "https://example.com",
   "port": 4100,
   "skills": [
     {
-      "id": "short_drama",
-      "name": "短剧制作",
-      "description": "规划并制作短剧视频"
+      "id": "sample",
+      "name": "示例能力",
+      "description": "说明示例能力的用途"
     }
   ]
 }
@@ -61,13 +60,14 @@ Rubick 查找 Skill 所属服务，将 namespaced ID 映射成子服务本地 ID
 ```
 
 `skills` 来自子服务目录中的 `SKILL_{字符串}.md` 文件。服务从文件名后缀读取 `id`，从 frontmatter 读取 `name` 和 `description`。
+`domain` 是子服务外网基础地址；仅内网服务可以提交空字符串。Rubick 不使用 `domain` 转发详情请求，而是通过 `app-net` 上的 `{id}.internal:{port}` 访问子服务。
 
 ### `POST /api/works/heartbeat`
 
 子服务按 Rubick 返回的 `interval` 秒数发送心跳：
 
 ```json
-{"id":"video","registry_epoch":"center-epoch-..."}
+{"id":"example","registry_epoch":"center-epoch-..."}
 ```
 
 正常响应：
@@ -86,16 +86,18 @@ Rubick 查找 Skill 所属服务，将 namespaced ID 映射成子服务本地 ID
 
 ## 子服务提供给 Rubick
 
+每个子服务都应实现本节的 Skill 接口。注册与心跳流程由[子服务开发指南](subservice.md)说明。
+
 ### `GET /api/skill`
 
-所有服务统一通过该接口返回本服务的入口 Skill。子服务入口 Skill 从其外置 `SKILL.md` 读取稳定说明，并在末尾追加服务地址及动态 HTTP API 说明。
+所有服务统一通过该接口返回本服务的入口 Skill。子服务入口 Skill 从其外置 `SKILL.md` 读取稳定说明；只有服务确实提供业务 API 时，才在末尾追加基于 `common.domain` 生成的动态 HTTP API 说明。
 
 ### `GET /api/skills`
 
-子服务返回本服务所提供的 Skill 元数据，字段为本地 `id`、`name` 和 `description`。Rubick 返回所有在线子服务的元数据，并将 ID 转换为带 `rubick_` 前缀的 namespaced ID。
+子服务返回本服务所提供的 Skill 元数据，字段为本地 `id`、`name` 和 `description`。Rubick 返回所有在线子服务的元数据，并以自身 `common.id` 为前缀生成 namespaced ID。
 
 ### `GET /api/skills/{skill_id}`
 
-子服务读取对应的外置 `SKILL_{字符串}.md`，并在末尾追加该 Skill 的动态 HTTP 接口说明，返回完整 Markdown。多个 Skill 通过各自 ID 单独读取，不合并成单个 Markdown/YAML 多文档流。Rubick 将 Agent 对 namespaced `/api/skills/{rubick_skill_id}` 的请求转发到归属服务的本地 ID 路径。
+子服务读取对应的外置 `SKILL_{字符串}.md` 并返回完整 Markdown。Skill 实际可调用业务 API 时，子服务在正文末尾追加该 API 的动态说明；没有业务 API 时不添加接口说明。多个 Skill 通过各自 ID 单独读取，不合并成单个 Markdown/YAML 多文档流。Rubick 将 Agent 对 namespaced `/api/skills/{namespaced_skill_id}` 的请求转发到归属服务的本地 ID 路径。
 
-子服务自身面向 Agent 的业务 API 路径由子服务定义；Skill 的动态接口说明必须使用其配置生成实际地址，并描述用途、参数和调用约束。
+子服务自身面向 Agent 的业务 API 路径由子服务定义；Skill 的动态接口说明必须使用 `common.domain` 生成实际外网地址，并描述用途、参数和调用约束。

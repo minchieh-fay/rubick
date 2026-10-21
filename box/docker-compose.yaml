@@ -1,0 +1,18 @@
+services:
+  box:
+    image: ubuntu:26.10
+    container_name: box
+    restart: unless-stopped
+    networks:
+      app-net:
+        aliases:
+          - box.internal
+    working_dir: /opt/box
+    volumes:
+      - ./:/opt/box:ro
+    entrypoint: ["/opt/box/box"]
+    command: ["--config", "/opt/box/config.toml"]
+
+networks:
+  app-net:
+    external: true

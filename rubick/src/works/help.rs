@@ -13,9 +13,13 @@ pub(super) fn help_new_epoch() -> String {
     format!("center-epoch-{nanos}-{sequence}")
 }
 
-// 组合 Rubick 对外公开的服务和技能 namespaced ID。
-pub(super) fn help_namespaced_skill_id(service_id: &str, skill_id: &str) -> String {
-    format!("rubick_{service_id}_{skill_id}")
+// 使用中心服务 ID 组合对外公开的服务和技能 namespaced ID。
+pub(super) fn help_namespaced_skill_id(
+    center_id: &str,
+    service_id: &str,
+    skill_id: &str,
+) -> String {
+    format!("{center_id}_{service_id}_{skill_id}")
 }
 
 // 校验服务和技能 ID 可作为单个 HTTP 路径片段使用。

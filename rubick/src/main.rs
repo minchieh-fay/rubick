@@ -46,10 +46,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     });
     let address = SocketAddr::from(([0, 0, 0, 0], config.common.port));
     let listener = tokio::net::TcpListener::bind(address).await?;
-    println!(
-        "{} listening at {}",
-        config.common.name, config.common.domain
-    );
+    println!("{} listening at {}", config.common.id, config.common.domain);
     axum::serve(listener, app).await?;
     Ok(())
 }

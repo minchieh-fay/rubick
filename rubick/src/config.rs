@@ -13,7 +13,6 @@ pub struct CommonConfig {
     pub domain: String,
     pub port: u16,
     pub id: String,
-    pub name: String,
 }
 
 // 表示 Rubick 专属的技能文件和心跳清理配置。
@@ -51,10 +50,11 @@ impl RubickConfig {
             io::Error::other(format!("解析配置文件 {} 失败: {error}", path.display()))
         })?;
         // step.2 校验服务身份、域名和心跳参数
-        if config.common.id.trim().is_empty() || config.common.name.trim().is_empty() {
+        // 调用辅助函数校验中心 ID 可作为公开 Skill ID 的前缀。
+        if !help::help_valid_center_id(&config.common.id) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "common.id/name 不能为空",
+                "common.id 不能为空且必须能安全用于 Skill ID",
             ));
         }
         if config.common.domain.trim().is_empty() || config.common.port == 0 {

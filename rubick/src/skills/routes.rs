@@ -40,8 +40,8 @@ async fn list_skills(State(state): State<AppState>) -> Json<SkillList> {
         .into_iter()
         .map(|(service_id, skill)| {
             SkillSummary {
-                // 调用辅助函数为子服务技能生成全局唯一的 Rubick ID。
-                id: help::help_namespaced_skill_id(&service_id, &skill.id),
+                // 调用辅助函数按中心 ID 为子服务技能生成 namespaced ID。
+                id: help::help_namespaced_skill_id(&state.config.common.id, &service_id, &skill.id),
                 name: skill.name,
                 description: skill.description,
             }
@@ -58,11 +58,11 @@ async fn skill_detail(
     // step.1 根据 Rubick Skill ID 定位在线服务和子服务元数据
     let (service, skill) = state
         .registry
-        .find_skill(&id)
+        .find_skill(&id, &state.config.common.id)
         .await
         .ok_or(StatusCode::NOT_FOUND)?;
-    // 调用辅助函数从子服务注册域名和端口生成上游基地址。
-    let base_url = help::help_service_base_url(&service.domain, service.port);
+    // 调用辅助函数按服务 ID 和监听端口生成 app-net 内部地址。
+    let base_url = help::help_internal_service_base_url(&service.id, service.port);
     // step.2 请求子服务 Skill 详情接口并转发响应正文
     // 调用辅助函数安全拼接子服务接口地址及技能 ID。
     let url = super::help::help_forward_url(&base_url, &skill.id).ok_or(StatusCode::BAD_GATEWAY)?;
@@ -91,7 +91,7 @@ async fn skill_detail(
 async fn rubick_skill(State(state): State<AppState>) -> Result<Response, StatusCode> {
     let content = state
         .skills
-        .rubick_skill(&state.config.common.domain)
+        .rubick_skill(&state.config.common.domain, &state.config.common.id)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let mut response = Response::new(content.into());
     response.headers_mut().insert(

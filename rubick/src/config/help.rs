@@ -12,3 +12,11 @@ pub(super) fn help_default_expiry() -> u64 {
 pub(super) fn help_default_skill_file() -> std::path::PathBuf {
     "SKILL.md".into()
 }
+
+// 校验 Rubick 服务 ID 可安全用作公开 Skill ID 的前缀。
+pub(super) fn help_valid_center_id(value: &str) -> bool {
+    !value.trim().is_empty()
+        && !value.chars().any(|character| {
+            character.is_control() || matches!(character, '/' | '\\' | '?' | '#' | '%')
+        })
+}
