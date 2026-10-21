@@ -1,0 +1,16 @@
+services:
+  rubick:
+    image: ubuntu:26.10
+    container_name: rubick
+    restart: unless-stopped
+    networks:
+      - app-net
+    working_dir: /opt/rubick
+    volumes:
+      - ./:/opt/rubick:ro
+    entrypoint: ["/opt/rubick/rubick"]
+    command: ["--config", "/opt/rubick/config.toml"]
+
+networks:
+  app-net:
+    external: true
