@@ -16,6 +16,12 @@ To run the generic Skill-only child service:
 cargo run -p box -- --config box/config.toml
 ```
 
+The SSH child service exposes short commands and persistent PTY sessions over HTTP:
+
+```sh
+cargo run -p ssh -- --config ssh/config.toml
+```
+
 The Rubick service keeps its configuration at [rubick/config.toml](rubick/config.toml). Edit `[common].port` to change the listening port, and set `[common].domain` to the public base URL used in the generated Rubick Skill. Rubick requires the selected configuration file to exist. Its external Skill file is `rubick/SKILL.md`; it is read at request time and is not compiled into the binary.
 
 ## API
@@ -27,3 +33,4 @@ The Rubick service keeps its configuration at [rubick/config.toml](rubick/config
 - `POST /api/works/heartbeat` refreshes a registration or requests re-registration when its epoch is stale.
 
 See [Rubick 服务说明](doc/rubick.md), the language-neutral [子服务开发指南](doc/subservice.md), [通用配置](doc/configuration.md), and the shared [HTTP API 协议](doc/http-api.md).
+The [SSH 子服务指南](doc/ssh.md) describes target configuration and command/session endpoints.

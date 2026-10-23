@@ -8,16 +8,12 @@ use super::help;
 #[derive(Clone)]
 pub struct SkillRepository {
     directory: PathBuf,
-    entry_skill: PathBuf,
 }
 
 impl SkillRepository {
-    // 创建绑定配置目录与入口 Skill 文件的仓库。
-    pub fn new(directory: PathBuf, entry_skill: PathBuf) -> Self {
-        Self {
-            directory,
-            entry_skill,
-        }
+    // 创建绑定外置技能目录的仓库。
+    pub fn new(directory: PathBuf) -> Self {
+        Self { directory }
     }
 
     // 扫描有效 Skill 文件并读取注册所需的元数据。
@@ -43,11 +39,6 @@ impl SkillRepository {
         // step.2 按稳定 ID 顺序返回技能清单
         skills.sort_by(|left, right| left.id.cmp(&right.id));
         Ok(skills)
-    }
-
-    // 读取 Box 外置入口 Skill；当前服务没有业务 API 需要追加说明。
-    pub fn entry_skill(&self) -> Result<String, io::Error> {
-        fs::read_to_string(&self.entry_skill)
     }
 
     // 返回指定 Skill 的完整说明，未找到时报告 NotFound。

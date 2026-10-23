@@ -1,0 +1,19 @@
+services:
+  ssh:
+    image: ${SSH_IMAGE:-ubuntu:26.10}
+    container_name: ssh
+    restart: unless-stopped
+    entrypoint: ["/opt/ssh/ssh-service"]
+    command: ["--config", "/opt/ssh/config.toml"]
+    networks:
+      app-net:
+        aliases:
+          - ssh.internal
+    volumes:
+      - ./config.toml:/opt/ssh/config.toml:ro
+      - ./skills:/opt/ssh/skills:ro
+      - ./ssh-service:/opt/ssh/ssh-service:ro
+
+networks:
+  app-net:
+    external: true

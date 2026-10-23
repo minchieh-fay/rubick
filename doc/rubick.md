@@ -34,6 +34,8 @@ Rubick 入口 Skill 位于外置 `rubick/SKILL.md`，运行时读取，不编译
 - `GET /api/skills` 返回所有有效注册中的 `id`、`name`、`description`，不返回 Skill 正文。
 - `GET /api/skills/{namespaced_skill_id}` 根据 namespaced ID 找到子服务，将请求转发到其本地 `GET /api/skills/{skill_id}`，并返回完整 Markdown。
 
+使用 `web_fetch` 调用 API 时，客户端应在每次请求 URL 上追加 `t=<当前 Unix 时间戳>`，例如 `/api/skills?t=1792575826`，以规避中间缓存返回旧列表。该参数仅用于缓存规避。
+
 在线 ID 格式为 `{common.id}_{service_id}_{skill_id}`。不同 Rubick 实例应配置不同的 `common.id`，以避免公开 ID 冲突。未知或过期 ID 返回 `404`；子服务不可达或返回非成功状态时，Rubick 返回 `502`，子服务的 `404` 则保留为 `404`。
 
 ## 子服务注册

@@ -7,4 +7,3 @@ rubick_domain = "http://rubick.internal:3000"
 [box]
 skill_dir = "skills"
 reload_interval_seconds = 600
-entry_skill_file = "SKILL.md"

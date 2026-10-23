@@ -21,10 +21,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let base_dir = config_path
         .parent()
         .unwrap_or_else(|| std::path::Path::new("."));
-    let skills = SkillRepository::new(
-        base_dir.join(&config.box_config.skill_dir),
-        base_dir.join(&config.box_config.entry_skill_file),
-    );
+    let skills = SkillRepository::new(base_dir.join(&config.box_config.skill_dir));
     let client = RegistrationClient::new(config.clone())?;
     let metadata = skills.metadata()?;
     let epoch = client.register(metadata).await?;

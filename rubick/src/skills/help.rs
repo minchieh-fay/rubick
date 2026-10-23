@@ -8,7 +8,9 @@ pub(super) fn help_dynamic_api(base_url: &str, service_id: &str) -> String {
          - `GET {base_url}/api/skills` 获取在线 Skill 的 id、name 和 description。\n\
          - `GET {base_url}/api/skills/{{namespaced_skill_id}}` 获取指定子服务 Skill 的完整正文。\n\
          - `GET {base_url}/api/skill` 获取当前服务的入口 Skill。\n\n\
-         每次处理请求时重新读取在线列表；任务匹配某个 Skill 时，先读取其完整正文。"
+         每次处理请求时重新读取在线列表；任务匹配某个 Skill 时，先读取其完整正文。\n\n\
+         如果使用 `web_fetch` 访问 API，每次请求都在 URL 后追加 `t=` 和当前 Unix 时间戳，避免读取旧缓存。\n\
+         例如：`GET {base_url}/api/skills?t=<当前 Unix 时间戳>`；读取详情时也使用 `?t=<当前 Unix 时间戳>`。"
     )
 }
 

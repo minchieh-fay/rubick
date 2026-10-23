@@ -18,18 +18,8 @@ struct SkillList {
 // 注册 Box 面向 Agent 和 Rubick 的 Skill 读取接口。
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/api/skill", get(entry_skill))
         .route("/api/skills", get(list_skills))
         .route("/api/skills/{id}", get(skill_detail))
-}
-
-// 返回入口 Skill 文件与按配置生成的 API 说明。
-async fn entry_skill(State(state): State<AppState>) -> Result<Response, StatusCode> {
-    let content = state
-        .skills
-        .entry_skill()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    Ok(markdown_response(content))
 }
 
 // 返回外置目录中的 Skill 元数据列表。

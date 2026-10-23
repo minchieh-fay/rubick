@@ -4,7 +4,7 @@
 
 ## 服务职责
 
-子服务负责读取并提供自己的 Skill，注册 Skill 元数据，并保持与 Rubick 的心跳。子服务可以实现自己的业务 API，也可以只提供描述 Agent 能力的 Skill 文件。
+子服务负责读取并提供自己的 Skill 列表与详情，注册 Skill 元数据，并保持与 Rubick 的心跳。子服务可以实现自己的业务 API，也可以只提供描述 Agent 能力的 Skill 文件。Agent 的入口 Skill 由 Rubick 统一提供，子服务不维护入口 Skill。
 
 Rubick 只接收和展示子 Skill 的 `id`、`name`、`description` 元数据。Skill 正文由子服务按请求返回，不应在注册请求或列表响应中传输。
 
@@ -71,12 +71,11 @@ networks:
 
 ## Skill 文件
 
-服务入口 Skill 和每个可单独发现的 Skill 都保存为外置 Markdown 文件，不得通过编译期嵌入方式打包。建议目录结构如下：
+每个可单独发现的 Skill 都保存为外置 Markdown 文件，不得通过编译期嵌入方式打包。子服务无需额外维护入口 `SKILL.md`。建议目录结构如下：
 
 ```text
 example/
   config.toml
-  SKILL.md
   skills/
     SKILL_sample.md
 ```
@@ -99,10 +98,6 @@ description: 用一句话说明此能力适用的任务。
 ## 必须提供的 Skill API
 
 所有子服务都提供以下 HTTP API。JSON 使用 UTF-8；详情正文使用 `text/markdown; charset=utf-8`。
-
-### `GET /api/skill`
-
-返回服务入口 `SKILL.md` 的完整 Markdown。服务存在业务 API 时，可以在正文末尾追加从 `common.domain` 动态生成的接口用途、参数和调用约束。无业务 API 时直接返回外置文件内容，不增加伪造的接口说明。
 
 ### `GET /api/skills`
 
@@ -178,7 +173,7 @@ description: 用一句话说明此能力适用的任务。
 ## 建议的启动流程
 
 1. 读取并校验显式配置；确认监听端口、服务 ID 和 Rubick 地址有效。
-2. 读取入口 Skill 和所有 `SKILL_{id}.md`，校验 frontmatter 并生成只含元数据的技能列表。
+2. 读取所有 `SKILL_{id}.md`，校验 frontmatter 并生成只含元数据的技能列表。
 3. 启动 HTTP 服务并向 Rubick 注册，保存返回的 `registry_epoch`。
 4. 按 Rubick 指定的间隔发送心跳；服务端要求重新注册时立即重新注册。
 5. 如果支持热加载，周期扫描文件。只有注册元数据有变化时才重新注册；详情正文可在每次详情请求时读取最新文件。

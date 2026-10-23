@@ -12,6 +12,8 @@
 
 返回所有心跳有效子服务的技能元数据，不含正文：
 
+使用 `web_fetch` 请求时，建议每次追加 `t=<当前 Unix 时间戳>` 查询参数（例如 `/api/skills?t=1792575826`），避免中间缓存返回过期的技能列表。该参数不改变 API 响应语义。
+
 ```json
 {
   "skills": [
@@ -86,11 +88,7 @@ Rubick 查找 Skill 所属服务，将 namespaced ID 映射成子服务本地 ID
 
 ## 子服务提供给 Rubick
 
-每个子服务都应实现本节的 Skill 接口。注册与心跳流程由[子服务开发指南](subservice.md)说明。
-
-### `GET /api/skill`
-
-所有服务统一通过该接口返回本服务的入口 Skill。子服务入口 Skill 从其外置 `SKILL.md` 读取稳定说明；只有服务确实提供业务 API 时，才在末尾追加基于 `common.domain` 生成的动态 HTTP API 说明。
+子服务实现技能列表与详情接口。Agent 入口 Skill 由 Rubick 的 `GET /api/skill` 统一提供。注册与心跳流程由[子服务开发指南](subservice.md)说明。
 
 ### `GET /api/skills`
 
@@ -101,3 +99,16 @@ Rubick 查找 Skill 所属服务，将 namespaced ID 映射成子服务本地 ID
 子服务读取对应的外置 `SKILL_{字符串}.md` 并返回完整 Markdown。Skill 实际可调用业务 API 时，子服务在正文末尾追加该 API 的动态说明；没有业务 API 时不添加接口说明。多个 Skill 通过各自 ID 单独读取，不合并成单个 Markdown/YAML 多文档流。Rubick 将 Agent 对 namespaced `/api/skills/{namespaced_skill_id}` 的请求转发到归属服务的本地 ID 路径。
 
 子服务自身面向 Agent 的业务 API 路径由子服务定义；Skill 的动态接口说明必须使用 `common.domain` 生成实际外网地址，并描述用途、参数和调用约束。
+
+
+## SSH 子服务 Agent 接口
+
+SSH 子服务在每个连接请求中接收主机和认证信息，不保存 SSH 主机档案或账号凭据。密码或私钥只用于建立本次连接，不进入会话状态。
+
+- `POST /api/commands/execute` 接收 `host`、`port`、`username`、`password` 或 `private_key`、可选 `private_key_passphrase`、`command` 和可选 `timeout_seconds`，返回 `exit_code` 与 `output`。超时受服务端 `short_command_timeout_seconds` 上限约束。
+- `POST /api/sessions` 接收相同的连接与认证字段以及可选 `command`，返回 `session_id` 与 `idle_timeout_seconds`，建立 PTY 终端会话。
+- `GET /api/sessions/{session_id}/output?since={byte_offset}` 读取输出并返回 `start_offset`、`next_offset`、`output` 和 `exited`。
+- `POST /api/sessions/{session_id}/input` 接收 `{"input":"..."}` 并向终端输入文本或控制字符。
+- `DELETE /api/sessions/{session_id}` 关闭 SSH 进程并释放会话。
+
+会话在没有读取输出或输入数据超过 `session_idle_timeout_seconds` 后由服务端自动结束。sudo/su 通过 PTY 标准交互，不为具体命令添加专用 API。更多示例见 [SSH 子服务指南](ssh.md)。

@@ -11,6 +11,7 @@ Rubick 是一个技能发现与路由中心。工程使用 Rust Cargo Workspace�
 ├── common/              # 可选的跨程序公共库
 ├── rubick/              # Rubick 服务
 ├── box/                 # 可从外置目录加载 Skill 的通用子服务
+├── ssh/                 # 提供 HTTP 命令和 PTY 会话的 SSH 子服务
 ├── app1/                # 子服务示例/服务一
 └── app2/                # 子服务示例/服务二
 ```
@@ -25,6 +26,7 @@ Rubick 是一个技能发现与路由中心。工程使用 Rust Cargo Workspace�
 - 子服务间的详情转发走 `app-net` 内部地址 `{id}.internal:{port}`，不得把容器内部地址写进 `common.domain`。服务的实际业务 API 存在时，才在完整 Skill 末尾动态追加使用说明，并用 `common.domain` 生成 API 地址；没有业务 API 的 Skill 不追加虚构的接口说明。
 - 每个服务都应在自己的代码目录中提供可直接编辑的 `config.toml`，端口等运行参数显式配置。不得依赖首次运行生成配置；配置缺失时应明确报错。不得在不同服务间复用相同 `id`。
 - 子服务的 `[common]` 还包含 `rubick_domain`，即 Rubick 中心服务地址。字段定义及完整示例统一维护在 `doc/`，实现不得自行发明同义字段。
+- SSH 子服务使用 Rust crate 连接配置档案中的目标主机；长会话必须支持空闲超时清理。接口、配置和部署细节见 `doc/ssh.md`。
 - Rubick 的专属配置包含 `heartbeat_interval_seconds`，默认 `30` 秒。Rubick 周期清理超过 `50` 秒没有心跳的子服务及其技能元数据。
 
 ## Skill 文件与内容
@@ -60,8 +62,8 @@ Rubick 是一个技能发现与路由中心。工程使用 Rust Cargo Workspace�
 
 ### 子服务提供给 Rubick
 
-- 所有服务统一提供 `GET /api/skill`，返回本服务的入口 Skill。子服务从自己的外置 `SKILL.md` 读取稳定说明；实际存在业务 API 时才追加配置生成的外网地址及动态 API 说明。
-- 子服务提供 `GET /api/skills` 返回本服务的 Skill 元数据，以及 `GET /api/skills/{skill_id}` 返回单个子 Skill 的完整 Markdown。多个 Skill 必须分别读取，不得将多个 frontmatter 文档用 `---` 拼接成一个 Skill 响应。
+- 仅 Rubick 提供 `GET /api/skill` 入口 Skill。子服务提供 `GET /api/skills` 返回本服务的 Skill 元数据，以及 `GET /api/skills/{skill_id}` 返回单个子 Skill 的完整 Markdown；子服务不维护入口 `SKILL.md`。
+- 多个子 Skill 必须分别读取，不得将多个 frontmatter 文档用 `---` 拼接成一个 Skill 响应。
 - Rubick 将 Agent 对 `/api/skills/{namespaced_skill_id}` 的详情请求转发到所属子服务的 `GET /api/skills/{skill_id}`，其中 `{skill_id}` 是注册时上报的子服务本地 ID。
 - 子服务面向 Agent 的其他业务 API 由子服务自行定义，但必须通过 HTTP 提供。
 

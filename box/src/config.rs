@@ -22,8 +22,6 @@ pub struct BoxSection {
     pub skill_dir: PathBuf,
     #[serde(default = "help::help_default_reload_interval")]
     pub reload_interval_seconds: u64,
-    #[serde(default = "help::help_default_entry_skill")]
-    pub entry_skill_file: PathBuf,
 }
 
 // 汇总 Box 启动所需的完整配置。
